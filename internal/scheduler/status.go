@@ -1,4 +1,6 @@
-package main
+// Package scheduler calcule l'état du décompte (rappel, expiration) et
+// déclenche une seule fois les actions d'échéance.
+package scheduler
 
 import (
 	"fmt"
@@ -6,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"smartguard/internal/config"
 )
 
 type Status struct {
@@ -26,9 +30,8 @@ type Status struct {
 	Blocked      bool   `json:"blocked,omitempty"`
 }
 
-// effectiveNow protège contre un retour en arrière de l'horloge système.
-func effectiveNow(st State) time.Time {
-	now := time.Now()
+// EffectiveNow protège contre un retour en arrière de l'horloge système.
+func EffectiveNow(st config.State, now time.Time) time.Time {
 	if !st.LastSeen.IsZero() && now.Before(st.LastSeen.Add(-2*time.Hour)) {
 		return st.LastSeen
 	}
@@ -37,22 +40,23 @@ func effectiveNow(st State) time.Time {
 
 func frDate(t time.Time) string { return t.Format("02/01/2006") }
 
-func computeStatus(c Config, st State) Status {
+// ComputeStatus calcule l'état du décompte à l'instant now.
+func ComputeStatus(c config.Config, st config.State, now time.Time) Status {
 	s := Status{ModuleName: c.ModuleName, SoftwareName: c.SoftwareName, Enabled: c.Enabled,
 		StartDate: c.StartDate, EndDate: c.EndDate, Contact: c.SupplierContact, Level: "ok"}
-	end, err := time.ParseInLocation(dateLayout, c.EndDate, time.Local)
+	end, err := time.ParseInLocation(config.DateLayout, c.EndDate, time.Local)
 	if err != nil {
 		return s
 	}
 	s.Configured = true
 	stop := end // expiration (arrêt des services) le jour de la date de fin, à 00:00
 	s.ExpiresAt = stop.Format(time.RFC3339)
-	now := effectiveNow(st)
+	now = EffectiveNow(st, now)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	s.DaysLeft = int(math.Round(stop.Sub(today).Hours() / 24))
 	s.Expired = !now.Before(stop)
 
-	if start, err := time.ParseInLocation(dateLayout, c.StartDate, time.Local); err == nil && stop.After(start) {
+	if start, err := time.ParseInLocation(config.DateLayout, c.StartDate, time.Local); err == nil && stop.After(start) {
 		p := now.Sub(start).Seconds() / stop.Sub(start).Seconds() * 100
 		s.Progress = int(math.Max(0, math.Min(100, p)))
 	}
@@ -83,9 +87,9 @@ func computeStatus(c Config, st State) Status {
 	return s
 }
 
-// isBlocked indique si l'URL demandée fait partie des URL à bloquer après expiration.
+// IsBlocked indique si l'URL demandée fait partie des URL à bloquer après expiration.
 // Motifs acceptés : chemin ("/", "/kelio") ou URL complète ("http://srv:8080/kelio").
-func isBlocked(c Config, host, path string) bool {
+func IsBlocked(c config.Config, host, path string) bool {
 	if path == "" {
 		path = "/"
 	}
@@ -103,7 +107,7 @@ func isBlocked(c Config, host, path string) bool {
 				return true
 			}
 			// hôte sans port indiqué : on compare le nom seul
-			if !strings.Contains(u.Host, ":") && strings.EqualFold(u.Host, hostOnly(host)) && strings.HasPrefix(path, p) {
+			if !strings.Contains(u.Host, ":") && strings.EqualFold(u.Host, HostOnly(host)) && strings.HasPrefix(path, p) {
 				return true
 			}
 			continue
@@ -118,7 +122,8 @@ func isBlocked(c Config, host, path string) bool {
 	return false
 }
 
-func hostOnly(h string) string {
+// HostOnly retire le port d'une adresse « hôte:port ».
+func HostOnly(h string) string {
 	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
 		return h[:i]
 	}

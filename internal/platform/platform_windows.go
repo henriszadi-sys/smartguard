@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package platform
 
 import (
 	"encoding/json"
@@ -13,14 +13,16 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"smartguard/internal/actions"
 )
 
-func isAdmin() bool {
+func IsAdmin() bool {
 	return windows.GetCurrentProcessToken().IsElevated()
 }
 
-// relaunchElevated relance l'exécutable avec l'invite UAC « Exécuter en tant qu'administrateur ».
-func relaunchElevated(args []string) error {
+// RelaunchElevated relance l'exécutable avec l'invite UAC « Exécuter en tant qu'administrateur ».
+func RelaunchElevated(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -36,14 +38,14 @@ func relaunchElevated(args []string) error {
 	return windows.ShellExecute(0, verb, file, params, cwd, windows.SW_NORMAL)
 }
 
-func openBrowser(url string) {
+func OpenBrowser(url string) {
 	// explorer.exe délègue au shell de l'utilisateur : le navigateur ne s'ouvre pas en mode administrateur.
 	_ = exec.Command("explorer.exe", url).Start()
 }
 
-func hasDesktop() bool { return true }
+func HasDesktop() bool { return true }
 
-func registryDir() string {
+func RegistryDir() string {
 	pd := os.Getenv("ProgramData")
 	if pd == "" {
 		pd = `C:\ProgramData`
@@ -51,8 +53,8 @@ func registryDir() string {
 	return filepath.Join(pd, "SmartGUARD")
 }
 
-// legacyRegistryDir : registre des versions publiées sous l'ancien nom du produit.
-func legacyRegistryDir() string {
+// LegacyRegistryDir : registre des versions publiées sous l'ancien nom du produit.
+func LegacyRegistryDir() string {
 	pd := os.Getenv("ProgramData")
 	if pd == "" {
 		pd = `C:\ProgramData`
@@ -60,7 +62,7 @@ func legacyRegistryDir() string {
 	return filepath.Join(pd, "LicGuard")
 }
 
-func defaultInstallDir(name string) string {
+func DefaultInstallDir(name string) string {
 	pf := os.Getenv("ProgramFiles")
 	if pf == "" {
 		pf = `C:\Program Files`
@@ -68,25 +70,25 @@ func defaultInstallDir(name string) string {
 	return filepath.Join(pf, name)
 }
 
-func exeFileName(name string) string { return name + ".exe" }
+func ExeFileName(name string) string { return name + ".exe" }
 
-type sysService struct {
+type SysService struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Status      string `json:"status"`
 }
 
-func listSystemServices() []sysService {
+func ListSystemServices() []SysService {
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
 		"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Service | Sort-Object DisplayName | ForEach-Object { [pscustomobject]@{name=$_.Name; display_name=$_.DisplayName; status=$_.Status.ToString()} } | ConvertTo-Json -Compress").Output()
 	if err != nil {
 		return nil
 	}
-	var list []sysService
+	var list []SysService
 	if json.Unmarshal(out, &list) != nil {
-		var one sysService
+		var one SysService
 		if json.Unmarshal(out, &one) == nil {
-			list = []sysService{one}
+			list = []SysService{one}
 		}
 	}
 	for i := range list {
@@ -100,13 +102,13 @@ func listSystemServices() []sysService {
 	return list
 }
 
-func openFirewall(name string, port int) string {
+func OpenFirewall(name string, port int) string {
 	_ = exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+name).Run()
-	return runCmd(30*time.Second, "netsh", "advfirewall", "firewall", "add", "rule", "name="+name,
+	return actions.RunCmd(30*time.Second, "netsh", "advfirewall", "firewall", "add", "rule", "name="+name,
 		"dir=in", "action=allow", "protocol=TCP", fmt.Sprintf("localport=%d", port))
 }
 
-func closeFirewall(name string) {
+func CloseFirewall(name string) {
 	_ = exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+name).Run()
 }
 
@@ -118,20 +120,20 @@ func shortcutPath(name string) string {
 	return filepath.Join(pub, "Desktop", name+" - administration.url")
 }
 
-// createShortcut crée un raccourci sur le bureau commun vers la page d'administration.
-func createShortcut(name, url string) error {
+// CreateShortcut crée un raccourci sur le bureau commun vers la page d'administration.
+func CreateShortcut(name, url string) error {
 	return os.WriteFile(shortcutPath(name), []byte("[InternetShortcut]\r\nURL="+url+"\r\n"), 0644)
 }
 
-func removeShortcut(name string) { _ = os.Remove(shortcutPath(name)) }
+func RemoveShortcut(name string) { _ = os.Remove(shortcutPath(name)) }
 
-func pauseConsole() {
+func PauseConsole() {
 	fmt.Print("\nAppuyez sur Entrée pour fermer…")
 	_, _ = fmt.Scanln()
 }
 
-// serviceDiagnostics : état du service et derniers événements du gestionnaire de services Windows.
-func serviceDiagnostics(name string) string {
+// ServiceDiagnostics : état du service et derniers événements du gestionnaire de services Windows.
+func ServiceDiagnostics(name string) string {
 	out, _ := exec.Command("sc.exe", "query", name).CombinedOutput()
 	res := "• État du service (sc query " + name + ") :\n" + strings.TrimSpace(string(out)) + "\n"
 	ps := "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction SilentlyContinue | Where-Object { $_.Message -like '*" + name + "*' } | Select-Object -First 3 | ForEach-Object { $_.TimeCreated.ToString('HH:mm:ss') + ' ' + $_.Message }"

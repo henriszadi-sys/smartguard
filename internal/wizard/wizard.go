@@ -1,8 +1,9 @@
-package main
+// Package wizard est l'assistant d'installation : il installe, modifie,
+// renomme et désinstalle les modules d'un serveur.
+package wizard
 
 import (
 	"crypto/rand"
-	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,10 +22,14 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-)
 
-//go:embed assets/setup.html
-var setupHTML []byte
+	"smartguard/internal/config"
+	"smartguard/internal/logging"
+	"smartguard/internal/platform"
+	"smartguard/internal/scheduler"
+	"smartguard/internal/version"
+	"smartguard/web"
+)
 
 // Installation : un module installé (un par logiciel contrôlé).
 type Installation struct {
@@ -37,14 +42,14 @@ type Installation struct {
 
 var regMu sync.Mutex
 
-func registryPath() string { return filepath.Join(registryDir(), "installations.json") }
+func registryPath() string { return filepath.Join(platform.RegistryDir(), "installations.json") }
 
 func loadRegistry() []Installation {
 	var list []Installation
 	b, err := os.ReadFile(registryPath())
 	if errors.Is(err, os.ErrNotExist) {
 		// Reprise des modules installés avant le renommage du produit.
-		b, err = os.ReadFile(filepath.Join(legacyRegistryDir(), "installations.json"))
+		b, err = os.ReadFile(filepath.Join(platform.LegacyRegistryDir(), "installations.json"))
 	}
 	if err == nil {
 		_ = json.Unmarshal(b, &list)
@@ -53,11 +58,11 @@ func loadRegistry() []Installation {
 }
 
 func saveRegistry(list []Installation) error {
-	if err := os.MkdirAll(registryDir(), 0755); err != nil {
+	if err := os.MkdirAll(platform.RegistryDir(), 0755); err != nil {
 		return err
 	}
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
-	return writeJSON(registryPath(), list)
+	return config.WriteJSON(registryPath(), list)
 }
 
 func findInstall(name string) (Installation, bool) {
@@ -76,7 +81,7 @@ func (nopProgram) Stop(service.Service) error  { return nil }
 
 func serviceConfig(name, exe, cfgPath, software string) *service.Config {
 	return &service.Config{
-		Name:        sanitizeName(name),
+		Name:        config.SanitizeName(name),
 		DisplayName: name + " (rappel d'expiration)",
 		Description: "Décompte d'expiration de licence / contrat de support — " + software,
 		Executable:  exe,
@@ -122,12 +127,13 @@ type setupServer struct {
 	mu    sync.Mutex // une seule installation à la fois
 }
 
-func runSetup(listen string) error {
-	if !isAdmin() {
+// Run ouvre l'assistant dans le navigateur (ou affiche son adresse sur un serveur sans écran).
+func Run(listen string) error {
+	if !platform.IsAdmin() {
 		fmt.Println("Des droits administrateur sont nécessaires : confirmation demandée…")
-		if err := relaunchElevated([]string{"setup"}); err != nil {
+		if err := platform.RelaunchElevated([]string{"setup"}); err != nil {
 			fmt.Println("Impossible d'obtenir les droits administrateur :", err)
-			pauseConsole()
+			platform.PauseConsole()
 			return err
 		}
 		return nil
@@ -136,7 +142,7 @@ func runSetup(listen string) error {
 	_, _ = rand.Read(b)
 	ss := &setupServer{token: hex.EncodeToString(b), quit: make(chan struct{})}
 
-	remote := !hasDesktop() && !strings.HasPrefix(listen, "127.0.0.1")
+	remote := !platform.HasDesktop() && !strings.HasPrefix(listen, "127.0.0.1")
 	if listen == "" {
 		listen = "127.0.0.1:0"
 		if remote {
@@ -164,7 +170,7 @@ func runSetup(listen string) error {
 	} else {
 		fmt.Println("L'assistant s'ouvre dans votre navigateur. Si ce n'est pas le cas, copiez :")
 		fmt.Println("   " + local)
-		openBrowser(local)
+		platform.OpenBrowser(local)
 	}
 	fmt.Println("\nNe fermez pas cette fenêtre avant d'avoir terminé.")
 
@@ -202,7 +208,7 @@ func (ss *setupServer) routes() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Frame-Options", "DENY")
-		_, _ = w.Write(setupHTML)
+		_, _ = w.Write(web.SetupHTML)
 	})
 	api := func(path string, h func(w http.ResponseWriter, r *http.Request)) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -214,13 +220,13 @@ func (ss *setupServer) routes() http.Handler {
 		})
 	}
 	api("/api/info", ss.apiInfo)
-	api("/api/services", func(w http.ResponseWriter, r *http.Request) { writeJSONResp(w, listSystemServices()) })
+	api("/api/services", func(w http.ResponseWriter, r *http.Request) { respondJSON(w, platform.ListSystemServices()) })
 	api("/api/existing", ss.apiExisting)
 	api("/api/check", ss.apiCheck)
 	api("/api/install", ss.apiInstall)
 	api("/api/uninstall", ss.apiUninstall)
 	api("/api/quit", func(w http.ResponseWriter, r *http.Request) {
-		writeJSONResp(w, map[string]bool{"ok": true})
+		respondJSON(w, map[string]bool{"ok": true})
 		ss.once.Do(func() { close(ss.quit) })
 	})
 	return mux
@@ -242,9 +248,9 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 	var views []installView
 	for _, in := range loadRegistry() {
 		v := installView{Installation: in, Status: "non installé"}
-		if st, err := NewStoreReadOnly(in.Config); err == nil {
+		if st, err := config.OpenExisting(in.Config); err == nil {
 			c := st.Config()
-			s := computeStatus(c, st.State())
+			s := scheduler.ComputeStatus(c, st.State(), time.Now())
 			v.SoftwareName, v.EndDate, v.Enabled, v.DaysLeft, v.Level = c.SoftwareName, c.EndDate, c.Enabled, s.DaysLeft, s.Level
 			v.AdminURL = fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), in.Port, c.AdminPath)
 			if svc, err := controlFor(in.Name, in.Exe, in.Config, c.SoftwareName); err == nil {
@@ -256,23 +262,15 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 	if views == nil {
 		views = []installView{}
 	}
-	writeJSONResp(w, map[string]any{
-		"version":      version,
+	respondJSON(w, map[string]any{
+		"version":      version.Number,
 		"os":           runtime.GOOS,
 		"hostname":     host,
 		"installs":     views,
-		"dir_template": defaultInstallDir("{NOM}"),
-		"message":      DefaultMessage,
-		"expired":      DefaultExpiredMessage,
+		"dir_template": platform.DefaultInstallDir("{NOM}"),
+		"message":      config.DefaultMessage,
+		"expired":      config.DefaultExpiredMessage,
 	})
-}
-
-// NewStoreReadOnly lit une configuration existante sans en créer.
-func NewStoreReadOnly(path string) (*Store, error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
-	return NewStore(path)
 }
 
 func (ss *setupServer) apiExisting(w http.ResponseWriter, r *http.Request) {
@@ -281,14 +279,14 @@ func (ss *setupServer) apiExisting(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "installation introuvable", http.StatusNotFound)
 		return
 	}
-	st, err := NewStoreReadOnly(in.Config)
+	st, err := config.OpenExisting(in.Config)
 	if err != nil {
 		http.Error(w, "configuration illisible : "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	c := st.Config()
 	c.AdminPasswordHash = ""
-	writeJSONResp(w, map[string]any{"install": in, "config": c})
+	respondJSON(w, map[string]any{"install": in, "config": c})
 }
 
 type checkReq struct {
@@ -320,12 +318,13 @@ func (ss *setupServer) apiCheck(w http.ResponseWriter, r *http.Request) {
 		res["port_ok"] = ok
 	}
 	if q.Upstream != "" {
-		res["upstream_ok"], res["upstream_msg"] = testUpstream(q.Upstream)
+		res["upstream_ok"], res["upstream_msg"] = TestUpstream(q.Upstream)
 	}
-	writeJSONResp(w, res)
+	respondJSON(w, res)
 }
 
-func testUpstream(u string) (bool, string) {
+// TestUpstream vérifie que l'application surveillée répond à l'adresse indiquée.
+func TestUpstream(u string) (bool, string) {
 	pu, err := url.Parse(u)
 	if err != nil || pu.Host == "" || (pu.Scheme != "http" && pu.Scheme != "https") {
 		return false, "adresse invalide (ex. http://127.0.0.1:8081)"
@@ -386,7 +385,7 @@ func (ss *setupServer) apiInstall(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "steps": res["steps"]})
 		return
 	}
-	writeJSONResp(w, res)
+	respondJSON(w, res)
 }
 
 func writeErr(w http.ResponseWriter, msg string) {
@@ -404,7 +403,7 @@ func doInstall(q installReq) (map[string]any, error) {
 			return
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "=== Installation %s — SmartGUARD v%s ===\r\n", time.Now().Format("02/01/2006 15:04:05"), version)
+		fmt.Fprintf(&b, "=== Installation %s — SmartGUARD v%s ===\r\n", time.Now().Format("02/01/2006 15:04:05"), version.Number)
 		for _, st := range steps {
 			mark := "OK "
 			if !st.OK {
@@ -416,10 +415,7 @@ func doInstall(q installReq) (map[string]any, error) {
 			}
 		}
 		b.WriteString("\r\n")
-		if f, err := os.OpenFile(filepath.Join(logDir, "installation.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-			_, _ = f.WriteString(b.String())
-			f.Close()
-		}
+		logging.AppendInstall(logDir, b.String())
 	}()
 	add := func(label string, err error, detail string) error {
 		s := step{Label: label, OK: err == nil, Detail: detail}
@@ -433,7 +429,7 @@ func doInstall(q installReq) (map[string]any, error) {
 
 	// --- contrôles
 	q.ModuleName = strings.TrimSpace(q.ModuleName)
-	name := sanitizeName(q.ModuleName)
+	name := config.SanitizeName(q.ModuleName)
 	if q.ModuleName == "" || name == "" {
 		return res, errors.New("indiquez le nom du module")
 	}
@@ -471,9 +467,9 @@ func doInstall(q installReq) (map[string]any, error) {
 		}
 		upstream = strings.TrimRight(pu.String(), "/")
 	}
-	check := defaultConfig()
+	check := config.Default()
 	check.StartDate, check.EndDate, check.Enabled = q.StartDate, q.EndDate, q.Enabled
-	if err := validate(check); err != nil {
+	if err := config.Validate(check); err != nil {
 		return res, err
 	}
 	dir := strings.TrimSpace(q.InstallDir)
@@ -481,12 +477,12 @@ func doInstall(q installReq) (map[string]any, error) {
 		dir = old.Dir
 	}
 	if dir == "" {
-		dir = defaultInstallDir(name)
+		dir = platform.DefaultInstallDir(name)
 	}
 	if !filepath.IsAbs(dir) {
 		return res, errors.New("le dossier d'installation doit être un chemin complet")
 	}
-	exeDst := filepath.Join(dir, exeFileName(name))
+	exeDst := filepath.Join(dir, platform.ExeFileName(name))
 	cfgPath := filepath.Join(dir, "config.json")
 	renamed := existing && !strings.EqualFold(old.Name, name)
 
@@ -496,8 +492,8 @@ func doInstall(q installReq) (map[string]any, error) {
 			stopAndWait(svc)
 			if renamed {
 				_ = svc.Uninstall()
-				closeFirewall(old.Name)
-				removeShortcut(old.Name)
+				platform.CloseFirewall(old.Name)
+				platform.RemoveShortcut(old.Name)
 			}
 		}
 		_ = add("Arrêt du module existant", nil, old.Name)
@@ -521,9 +517,9 @@ func doInstall(q installReq) (map[string]any, error) {
 	}
 
 	// --- configuration
-	st, err := NewStore(cfgPath)
+	st, err := config.NewStore(cfgPath)
 	if err == nil {
-		err = st.UpdateConfig(func(c *Config) error {
+		err = st.UpdateConfig(func(c *config.Config) error {
 			c.ModuleName, c.ServiceName = q.ModuleName, q.ModuleName
 			c.SoftwareName = strings.TrimSpace(q.SoftwareName)
 			c.SupplierContact = strings.TrimSpace(q.SupplierContact)
@@ -535,7 +531,7 @@ func doInstall(q installReq) (map[string]any, error) {
 			c.Listen = fmt.Sprintf(":%d", q.Port)
 			c.Upstream = upstream
 			if q.Password != "" {
-				h, err := hashPassword(q.Password)
+				h, err := config.HashPassword(q.Password)
 				if err != nil {
 					return err
 				}
@@ -561,11 +557,11 @@ func doInstall(q installReq) (map[string]any, error) {
 			_ = svc.Uninstall() // reste d'une ancienne installation
 			err = svc.Install()
 		}
-		if err := add("Installation du service « "+sanitizeName(name)+" »", err, ""); err != nil {
+		if err := add("Installation du service « "+config.SanitizeName(name)+" »", err, ""); err != nil {
 			return res, err
 		}
 	}
-	_ = add("Ouverture du port dans le pare-feu", nil, openFirewall(name, q.Port))
+	_ = add("Ouverture du port dans le pare-feu", nil, platform.OpenFirewall(name, q.Port))
 	if err := svc.Start(); err != nil {
 		_ = add("Démarrage du service", err, "")
 		_ = add("Diagnostic", nil, diagnose(name, exeDst, cfgPath))
@@ -575,7 +571,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	ok := false
 	for i := 0; i < 30 && !ok; i++ {
 		time.Sleep(500 * time.Millisecond)
-		ok = isOurModule(fmt.Sprintf("http://127.0.0.1:%d%s/api/status", q.Port, adminPath))
+		ok = IsOurModule(fmt.Sprintf("http://127.0.0.1:%d%s/api/status", q.Port, adminPath))
 	}
 	if !ok {
 		_ = add("Vérification du fonctionnement", errors.New("le module ne répond pas"), "")
@@ -588,7 +584,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	host, _ := os.Hostname()
 	adminURL := fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), q.Port, adminPath)
 	if q.Shortcut && runtime.GOOS == "windows" {
-		_ = add("Raccourci sur le bureau", createShortcut(q.ModuleName, adminURL), "")
+		_ = add("Raccourci sur le bureau", platform.CreateShortcut(q.ModuleName, adminURL), "")
 	}
 	regMu.Lock()
 	list := []Installation{}
@@ -630,8 +626,8 @@ func (ss *setupServer) apiUninstall(w http.ResponseWriter, r *http.Request) {
 		err := svc.Uninstall()
 		steps = append(steps, step{Label: "Suppression du service", OK: err == nil, Detail: errStr(err)})
 	}
-	closeFirewall(in.Name)
-	removeShortcut(in.Name)
+	platform.CloseFirewall(in.Name)
+	platform.RemoveShortcut(in.Name)
 	if q.DeleteFiles {
 		self, _ := os.Executable()
 		var err error
@@ -653,7 +649,7 @@ func (ss *setupServer) apiUninstall(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = saveRegistry(list)
 	regMu.Unlock()
-	writeJSONResp(w, map[string]any{"ok": true, "steps": steps})
+	respondJSON(w, map[string]any{"ok": true, "steps": steps})
 }
 
 func errStr(err error) string {
@@ -711,7 +707,7 @@ func diagnose(name, exe, cfgPath string) string {
 	}
 	out, _ := exec.Command(exe, "-config", cfgPath, "check").CombinedOutput()
 	b.WriteString("• Vérification du module :\n" + strings.TrimSpace(string(out)) + "\n")
-	logPath := strings.TrimSuffix(cfgPath, ".json") + ".log"
+	logPath := logging.PathFor(cfgPath)
 	if data, err := os.ReadFile(logPath); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 		if len(lines) > 8 {
@@ -721,6 +717,23 @@ func diagnose(name, exe, cfgPath string) string {
 	} else {
 		b.WriteString("• Aucun journal écrit : le service n'a pas lancé le programme (voir l'état du service ci-dessous).\n")
 	}
-	b.WriteString(serviceDiagnostics(sanitizeName(name)))
+	b.WriteString(platform.ServiceDiagnostics(config.SanitizeName(name)))
 	return b.String()
+}
+
+// IsOurModule indique si l'adresse répond comme l'API d'état d'un module SmartGUARD.
+func IsOurModule(url string) bool {
+	cl := &http.Client{Timeout: 3 * time.Second}
+	resp, err := cl.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var st scheduler.Status
+	return resp.StatusCode == 200 && json.NewDecoder(resp.Body).Decode(&st) == nil && st.ModuleName != ""
+}
+
+func respondJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(v)
 }

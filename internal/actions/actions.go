@@ -1,0 +1,98 @@
+// Package actions exécute les actions d'échéance : arrêt de services,
+// exécution de scripts, et leur réactivation après renouvellement.
+package actions
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
+	"time"
+
+	"smartguard/internal/config"
+)
+
+// RunCmd exécute une commande avec délai maximal et renvoie un résumé pour le journal.
+func RunCmd(timeout time.Duration, name string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	res := strings.Join(strings.Fields(strings.ReplaceAll(string(out), "\n", " | ")), " ")
+	if len(res) > 400 {
+		res = res[:400] + "…"
+	}
+	if err != nil {
+		return fmt.Sprintf("ÉCHEC %s %s : %v %s", name, strings.Join(args, " "), err, res)
+	}
+	return fmt.Sprintf("OK %s %s", name, strings.Join(args, " "))
+}
+
+// StopService arrête le service et empêche son redémarrage automatique.
+func StopService(name string) []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			RunCmd(60*time.Second, "sc.exe", "stop", name),
+			RunCmd(30*time.Second, "sc.exe", "config", name, "start=", "disabled"),
+		}
+	}
+	return []string{
+		RunCmd(60*time.Second, "systemctl", "stop", name),
+		RunCmd(30*time.Second, "systemctl", "disable", name),
+	}
+}
+
+// RestoreService réactive et redémarre le service (après renouvellement).
+func RestoreService(name string) []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			RunCmd(30*time.Second, "sc.exe", "config", name, "start=", "auto"),
+			RunCmd(60*time.Second, "sc.exe", "start", name),
+		}
+	}
+	return []string{
+		RunCmd(30*time.Second, "systemctl", "enable", name),
+		RunCmd(60*time.Second, "systemctl", "start", name),
+	}
+}
+
+// RunScript exécute un script ou une commande (PowerShell pour les .ps1 sous Windows).
+func RunScript(cmdline string) string {
+	if runtime.GOOS == "windows" {
+		l := strings.ToLower(cmdline)
+		if strings.HasSuffix(strings.Trim(l, `" `), ".ps1") {
+			return RunCmd(10*time.Minute, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", strings.Trim(cmdline, `"`))
+		}
+		return RunCmd(10*time.Minute, "cmd.exe", "/C", cmdline)
+	}
+	return RunCmd(10*time.Minute, "/bin/sh", "-c", cmdline)
+}
+
+// Logf : fonction de journalisation utilisée par les actions.
+type Logf func(format string, args ...any)
+
+// Enforce exécute les actions d'expiration (appelée une seule fois par échéance).
+func Enforce(c config.Config, logf Logf) {
+	logf("EXPIRATION atteinte pour « %s » (fin : %s) — exécution des actions", c.SoftwareName, c.EndDate)
+	for _, s := range c.Services {
+		for _, line := range StopService(s) {
+			logf("  service %s : %s", s, line)
+		}
+	}
+	for _, sc := range c.Scripts {
+		logf("  script : %s", RunScript(sc))
+	}
+	if len(c.BlockedURLs) > 0 {
+		logf("  URL bloquées : %s", strings.Join(c.BlockedURLs, ", "))
+	}
+}
+
+// Restore réactive les services après renouvellement (action explicite de l'administrateur).
+func Restore(c config.Config, logf Logf) {
+	logf("RÉACTIVATION des services demandée par l'administrateur")
+	for _, s := range c.Services {
+		for _, line := range RestoreService(s) {
+			logf("  service %s : %s", s, line)
+		}
+	}
+}

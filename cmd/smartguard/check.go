@@ -1,13 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"strings"
-	"time"
+
+	"smartguard/internal/config"
+	"smartguard/internal/logging"
+	"smartguard/internal/version"
+	"smartguard/internal/wizard"
 )
 
 // runCheck vérifie que le module peut démarrer et affiche un diagnostic lisible.
@@ -17,19 +19,19 @@ func runCheck(cfgPath string) int {
 	ok := func(msg string, a ...any) { fmt.Printf("[OK]      "+msg+"\n", a...) }
 	ko := func(msg string, a ...any) { bad++; fmt.Printf("[PROBLÈME] "+msg+"\n", a...) }
 
-	fmt.Printf("Diagnostic SmartGUARD v%s\nConfiguration : %s\n\n", version, cfgPath)
+	fmt.Printf("Diagnostic SmartGUARD v%s\nConfiguration : %s\n\n", version.Number, cfgPath)
 	if _, err := os.Stat(cfgPath); err != nil {
 		ko("fichier de configuration introuvable : %v", err)
 		return 1
 	}
-	st, err := NewStore(cfgPath)
+	st, err := config.NewStore(cfgPath)
 	if err != nil {
 		ko("configuration illisible : %v", err)
 		return 1
 	}
 	c := st.Config()
 	ok("configuration lue (module « %s », logiciel « %s »)", c.ModuleName, c.SoftwareName)
-	if err := validate(c); err != nil {
+	if err := config.Validate(c); err != nil {
 		ko("configuration invalide : %v", err)
 	} else {
 		ok("dates : %s → %s, module %s", orDash(c.StartDate), orDash(c.EndDate), map[bool]string{true: "activé", false: "désactivé"}[c.Enabled])
@@ -45,7 +47,7 @@ func runCheck(cfgPath string) int {
 	if err != nil {
 		// Déjà occupé : est-ce ce module qui tourne ?
 		port := c.Listen[strings.LastIndex(c.Listen, ":")+1:]
-		if isOurModule("http://127.0.0.1:" + port + c.AdminPath + "/api/status") {
+		if wizard.IsOurModule("http://127.0.0.1:" + port + c.AdminPath + "/api/status") {
 			ok("le port %s est utilisé par ce module (déjà démarré)", c.Listen)
 		} else {
 			ko("impossible d'écouter sur %s : %v — port occupé par un autre programme ou bloqué", c.Listen, err)
@@ -57,7 +59,7 @@ func runCheck(cfgPath string) int {
 
 	// Application surveillée (mode automatique)
 	if c.Upstream != "" {
-		if reach, msg := testUpstream(c.Upstream); reach {
+		if reach, msg := wizard.TestUpstream(c.Upstream); reach {
 			ok("application %s : %s", c.Upstream, msg)
 		} else {
 			ko("application %s : %s", c.Upstream, msg)
@@ -67,7 +69,7 @@ func runCheck(cfgPath string) int {
 	}
 
 	// Droit d'écriture du journal
-	logPath := strings.TrimSuffix(cfgPath, ".json") + ".log"
+	logPath := logging.PathFor(cfgPath)
 	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err != nil {
 		ko("impossible d'écrire le journal %s : %v", logPath, err)
 	} else {
@@ -88,15 +90,4 @@ func orDash(s string) string {
 		return "–"
 	}
 	return s
-}
-
-func isOurModule(url string) bool {
-	cl := &http.Client{Timeout: 3 * time.Second}
-	resp, err := cl.Get(url)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	var st Status
-	return resp.StatusCode == 200 && json.NewDecoder(resp.Body).Decode(&st) == nil && st.ModuleName != ""
 }

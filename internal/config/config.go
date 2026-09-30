@@ -1,4 +1,6 @@
-package main
+// Package config lit, valide et enregistre la configuration d'un module
+// ainsi que son état interne persistant.
+package config
 
 import (
 	"crypto/pbkdf2"
@@ -16,7 +18,7 @@ import (
 	"time"
 )
 
-const dateLayout = "2006-01-02"
+const DateLayout = "2006-01-02"
 
 // Config : paramètres saisis par l'administrateur.
 type Config struct {
@@ -54,7 +56,7 @@ type State struct {
 const DefaultMessage = "L'assistance et le support technique à votre logiciel prendra fin dans {jours} jours, veuillez contacter le fournisseur"
 const DefaultExpiredMessage = "L'assistance et le support technique à votre logiciel {logiciel} ont pris fin le {date_fin}. Veuillez contacter le fournisseur."
 
-func defaultConfig() Config {
+func Default() Config {
 	return Config{
 		ModuleName:     "SmartGUARD",
 		ServiceName:    "SmartGUARD",
@@ -83,13 +85,13 @@ type Store struct {
 
 func NewStore(cfgPath string) (*Store, error) {
 	s := &Store{cfgPath: cfgPath, statePath: strings.TrimSuffix(cfgPath, filepath.Ext(cfgPath)) + ".state.json"}
-	s.cfg = defaultConfig()
+	s.cfg = Default()
 	if b, err := os.ReadFile(cfgPath); err == nil {
 		if err := json.Unmarshal(b, &s.cfg); err != nil {
 			return nil, fmt.Errorf("fichier de configuration invalide %s : %w", cfgPath, err)
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
-		if err := writeJSON(cfgPath, s.cfg); err != nil {
+		if err := WriteJSON(cfgPath, s.cfg); err != nil {
 			return nil, err
 		}
 	} else {
@@ -160,28 +162,28 @@ func (s *Store) UpdateConfig(fn func(c *Config) error) error {
 	old := s.cfg
 	s.cfg = c
 	s.normalize()
-	if err := validate(s.cfg); err != nil {
+	if err := Validate(s.cfg); err != nil {
 		s.cfg = old
 		return err
 	}
-	return writeJSON(s.cfgPath, s.cfg)
+	return WriteJSON(s.cfgPath, s.cfg)
 }
 
 func (s *Store) UpdateState(fn func(st *State)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	fn(&s.state)
-	_ = writeJSON(s.statePath, s.state)
+	_ = WriteJSON(s.statePath, s.state)
 }
 
-func validate(c Config) error {
+func Validate(c Config) error {
 	if c.StartDate != "" {
-		if _, err := time.ParseInLocation(dateLayout, c.StartDate, time.Local); err != nil {
+		if _, err := time.ParseInLocation(DateLayout, c.StartDate, time.Local); err != nil {
 			return fmt.Errorf("date de début invalide (format AAAA-MM-JJ)")
 		}
 	}
 	if c.EndDate != "" {
-		if _, err := time.ParseInLocation(dateLayout, c.EndDate, time.Local); err != nil {
+		if _, err := time.ParseInLocation(DateLayout, c.EndDate, time.Local); err != nil {
 			return fmt.Errorf("date de fin invalide (format AAAA-MM-JJ)")
 		}
 	}
@@ -194,7 +196,8 @@ func validate(c Config) error {
 	return nil
 }
 
-func writeJSON(path string, v any) error {
+// WriteJSON écrit un fichier JSON de façon atomique (fichier temporaire puis renommage).
+func WriteJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
@@ -208,7 +211,7 @@ func writeJSON(path string, v any) error {
 
 // ---- Mot de passe administrateur (PBKDF2-SHA256) ----
 
-func hashPassword(pw string) (string, error) {
+func HashPassword(pw string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -222,7 +225,7 @@ func hashPassword(pw string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-func checkPassword(hash, pw string) bool {
+func CheckPassword(hash, pw string) bool {
 	parts := strings.Split(hash, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
 		return false
@@ -241,4 +244,29 @@ func checkPassword(hash, pw string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare(got, want) == 1
+}
+
+// OpenExisting lit une configuration existante sans en créer.
+func OpenExisting(path string) (*Store, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	return NewStore(path)
+}
+
+// SanitizeName transforme un nom de module en nom de service système valide.
+func SanitizeName(n string) string {
+	var b strings.Builder
+	for _, r := range n {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ' || r == '.':
+			b.WriteRune('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "SmartGUARD"
+	}
+	return b.String()
 }
