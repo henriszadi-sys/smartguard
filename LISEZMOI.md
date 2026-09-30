@@ -1,4 +1,4 @@
-# SmartGUARD — module de rappel d'expiration (v1.3)
+# SmartGUARD — module de rappel d'expiration (v1.4)
 
 Un seul fichier à lancer. Un assistant graphique demande toutes les informations, puis installe le module comme service sur le serveur.
 
@@ -41,6 +41,14 @@ Relancez l'assistant, soit `SmartGUARD-Setup.exe`, soit le programme installé. 
 - **Désinstaller** supprime le service, la règle de pare-feu et les fichiers.
 
 On peut installer plusieurs modules sur un même serveur, un par logiciel surveillé, chacun sur son propre port.
+
+## Mise à jour depuis la version 1.3 (ancien nom LicGuard)
+
+Lancez `SmartGUARD-Setup.exe` (ou `smartguard-setup`) sur le serveur : les modules déjà installés apparaissent sur l'écran d'accueil. Cliquez sur **Modifier** puis **Installer** pour chacun d'eux afin de remplacer le programme.
+
+- Les dates, les actions et le mot de passe sont conservés.
+- L'adresse d'administration ne change pas (elle garde `/_licguard/admin`), et la ligne de code déjà ajoutée dans l'application reste valable.
+- Les administrateurs connectés devront se reconnecter une fois.
 
 ## Fonctionnement
 
