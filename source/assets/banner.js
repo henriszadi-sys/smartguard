@@ -1,14 +1,14 @@
-/* LicGuard — bandeau de décompte d'expiration (injecté dans les pages de l'application) */
+/* SmartGUARD — bandeau de décompte d'expiration (injecté dans les pages de l'application) */
 (function () {
-  if (window.__licguard) return;
-  window.__licguard = true;
+  if (window.__smartguard) return;
+  window.__smartguard = true;
   var me = document.currentScript || (function () {
     var s = document.getElementsByTagName('script');
     for (var i = s.length - 1; i >= 0; i--) if (/\/banner\.js(\?|$)/.test(s[i].src)) return s[i];
   })();
   if (!me) return;
   var base = me.src.replace(/\/banner\.js(\?.*)?$/, '');
-  var KEY = 'licguard-hidden';
+  var KEY = 'smartguard-hidden';
 
   function get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
   function set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
@@ -32,13 +32,13 @@
     '@media (max-width:600px){.bar{font-size:13px;padding:8px 10px;gap:10px}.days{font-size:17px;min-width:44px}}';
 
   function render(st) {
-    var old = document.getElementById('licguard-host');
+    var old = document.getElementById('smartguard-host');
     if (old) old.remove();
     if (!st || !st.show) return;
     if (!st.blocked && get(KEY) === st.level + '|' + st.days_left) return;
 
     var host = document.createElement('div');
-    host.id = 'licguard-host';
+    host.id = 'smartguard-host';
     var root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
     var title = esc(st.module_name) + (st.software_name ? ' — ' + esc(st.software_name) : '');
     var contact = st.contact ? '<p class="c">Fournisseur : ' + esc(st.contact) + '</p>' : '';

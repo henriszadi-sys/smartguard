@@ -41,7 +41,12 @@ func registryPath() string { return filepath.Join(registryDir(), "installations.
 
 func loadRegistry() []Installation {
 	var list []Installation
-	if b, err := os.ReadFile(registryPath()); err == nil {
+	b, err := os.ReadFile(registryPath())
+	if errors.Is(err, os.ErrNotExist) {
+		// Reprise des modules installés avant le renommage du produit.
+		b, err = os.ReadFile(filepath.Join(legacyRegistryDir(), "installations.json"))
+	}
+	if err == nil {
 		_ = json.Unmarshal(b, &list)
 	}
 	return list
@@ -148,7 +153,7 @@ func runSetup(listen string) error {
 
 	local := fmt.Sprintf("http://127.0.0.1:%d/?t=%s", port, ss.token)
 	fmt.Println("===============================================================")
-	fmt.Println("  LicGuard — assistant d'installation")
+	fmt.Println("  SmartGUARD — assistant d'installation")
 	fmt.Println("===============================================================")
 	if remote {
 		fmt.Println("Aucun écran détecté. Ouvrez l'une de ces adresses depuis un navigateur :")
@@ -399,7 +404,7 @@ func doInstall(q installReq) (map[string]any, error) {
 			return
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "=== Installation %s — LicGuard v%s ===\r\n", time.Now().Format("02/01/2006 15:04:05"), version)
+		fmt.Fprintf(&b, "=== Installation %s — SmartGUARD v%s ===\r\n", time.Now().Format("02/01/2006 15:04:05"), version)
 		for _, st := range steps {
 			mark := "OK "
 			if !st.OK {
@@ -543,6 +548,8 @@ func doInstall(q installReq) (map[string]any, error) {
 		return res, err
 	}
 
+	adminPath := st.Config().AdminPath // chemin conservé lors d'une mise à jour
+
 	// --- service système
 	svc, err := controlFor(name, exeDst, cfgPath, q.SoftwareName)
 	if err != nil {
@@ -568,7 +575,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	ok := false
 	for i := 0; i < 30 && !ok; i++ {
 		time.Sleep(500 * time.Millisecond)
-		ok = isOurModule(fmt.Sprintf("http://127.0.0.1:%d/_licguard/api/status", q.Port))
+		ok = isOurModule(fmt.Sprintf("http://127.0.0.1:%d%s/api/status", q.Port, adminPath))
 	}
 	if !ok {
 		_ = add("Vérification du fonctionnement", errors.New("le module ne répond pas"), "")
@@ -579,7 +586,7 @@ func doInstall(q installReq) (map[string]any, error) {
 
 	// --- raccourci + registre
 	host, _ := os.Hostname()
-	adminURL := fmt.Sprintf("http://%s:%d/_licguard/admin", strings.ToLower(host), q.Port)
+	adminURL := fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), q.Port, adminPath)
 	if q.Shortcut && runtime.GOOS == "windows" {
 		_ = add("Raccourci sur le bureau", createShortcut(q.ModuleName, adminURL), "")
 	}
@@ -595,7 +602,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	regMu.Unlock()
 
 	res["admin_url"] = adminURL
-	res["snippet"] = fmt.Sprintf(`<script src="http://%s:%d/_licguard/banner.js" defer></script>`, strings.ToLower(host), q.Port)
+	res["snippet"] = fmt.Sprintf(`<script src="http://%s:%d%s/banner.js" defer></script>`, strings.ToLower(host), q.Port, adminPath)
 	res["mode"] = q.Mode
 	res["name"] = name
 	return res, nil

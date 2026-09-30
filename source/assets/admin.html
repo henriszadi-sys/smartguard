@@ -127,7 +127,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 
   function fmt(d){ if(!d) return '–'; var p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
   function msg(t, err){ var m=$('msg'); m.textContent=t; m.style.color = err ? 'var(--crit)' : 'var(--ok)'; if(!err) setTimeout(function(){ if(m.textContent===t) m.textContent=''; }, 4000); }
-  function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-LicGuard':'1','Content-Type':'application/json'}, opt.headers||{}); opt.credentials='same-origin';
+  function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-SmartGUARD':'1','Content-Type':'application/json'}, opt.headers||{}); opt.credentials='same-origin';
     return fetch(base + path, opt).then(function(r){ if(r.status===401){ location.href = base + '/admin'; throw new Error('Session expirée'); } return r.json().catch(function(){ return {}; }).then(function(j){ if(!r.ok) throw new Error(j.error || ('Erreur ' + r.status)); return j; }); }); }
 
   function paint(c){

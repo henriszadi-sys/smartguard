@@ -70,10 +70,10 @@ func orNone(s string) string {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `LicGuard v%s — module de rappel d'expiration de licence / contrat de support
+	fmt.Fprintf(os.Stderr, `SmartGUARD v%s — module de rappel d'expiration de licence / contrat de support
 
 Utilisation :
-  licguard [options] <commande>
+  smartguard [options] <commande>
 
 Commandes :
   (aucune)       ouvrir l'assistant d'installation graphique (double-clic)
@@ -175,7 +175,7 @@ func main() {
 			c.ModuleName, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled],
 			c.SoftwareName, c.StartDate, c.EndDate, st.DaysLeft, st.Expired, st.Show, st.Message)
 	case "set-password":
-		pw := os.Getenv("LICGUARD_PASSWORD")
+		pw := os.Getenv("SMARTGUARD_PASSWORD")
 		if pw == "" {
 			fmt.Print("Nouveau mot de passe administrateur (8 caractères min.) : ")
 			pw, _ = bufio.NewReader(os.Stdin).ReadString('\n')
@@ -209,7 +209,7 @@ func sanitizeName(n string) string {
 		}
 	}
 	if b.Len() == 0 {
-		return "LicGuard"
+		return "SmartGUARD"
 	}
 	return b.String()
 }

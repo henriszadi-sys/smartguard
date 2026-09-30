@@ -17,7 +17,7 @@ func runCheck(cfgPath string) int {
 	ok := func(msg string, a ...any) { fmt.Printf("[OK]      "+msg+"\n", a...) }
 	ko := func(msg string, a ...any) { bad++; fmt.Printf("[PROBLÈME] "+msg+"\n", a...) }
 
-	fmt.Printf("Diagnostic LicGuard v%s\nConfiguration : %s\n\n", version, cfgPath)
+	fmt.Printf("Diagnostic SmartGUARD v%s\nConfiguration : %s\n\n", version, cfgPath)
 	if _, err := os.Stat(cfgPath); err != nil {
 		ko("fichier de configuration introuvable : %v", err)
 		return 1

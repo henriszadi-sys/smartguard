@@ -391,7 +391,7 @@ function showResult(r, err){
   c.innerHTML = '<div class="big-ok">✓</div><h1>Module « '+esc(r.name)+' » '+(d.existing?'mis à jour':'installé')+'</h1><p class="lead">Le module fonctionne et démarrera automatiquement avec le serveur.</p>' + list +
     '<label>Page d\u2019administration <span class="hint">— identifiant admin</span></label><pre>'+esc(r.admin_url)+'</pre>' +
     (r.mode==='script' ? '<label>Ligne à ajouter avant &lt;/body&gt; dans la page d\u2019accueil de l\u2019application</label><pre id="snip">'+esc(r.snippet)+'</pre><button class="small" id="copy" style="margin-top:8px">Copier</button>'
-      : '<label>Adresse à communiquer aux utilisateurs</label><pre>'+esc(r.admin_url.replace(/\/_licguard\/admin$/,'/'))+'</pre>');
+      : '<label>Adresse à communiquer aux utilisateurs</label><pre>'+esc(r.admin_url.replace(/\/_[a-z]+\/admin$/,'/'))+'</pre>');
   setFooter(false, true, 'Terminer');
   var cp=$('#copy'); if(cp) cp.onclick=function(){ navigator.clipboard.writeText(r.snippet).then(function(){ cp.textContent='Copié ✓'; }); };
   $('#next').onclick = function(){ window.open(r.admin_url,'_blank'); finish(); };

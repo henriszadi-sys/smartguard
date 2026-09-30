@@ -266,7 +266,7 @@ func (a *App) apiConfig(w http.ResponseWriter, r *http.Request, c Config) {
 			x.Message, x.ExpiredMessage = in.Message, in.ExpiredMessage
 			x.Services, x.BlockedURLs, x.Scripts = in.Services, in.BlockedURLs, in.Scripts
 			if x.ModuleName == "" {
-				x.ModuleName = "LicGuard"
+				x.ModuleName = "SmartGUARD"
 			}
 			if in.NewPassword != "" {
 				if len(in.NewPassword) < 8 {
@@ -301,7 +301,7 @@ func (a *App) apiConfig(w http.ResponseWriter, r *http.Request, c Config) {
 
 func postOnly(w http.ResponseWriter, r *http.Request) bool {
 	// En-tête personnalisé exigé : protège contre les requêtes inter-sites (CSRF).
-	if r.Method != http.MethodPost || r.Header.Get("X-LicGuard") != "1" {
+	if r.Method != http.MethodPost || r.Header.Get("X-SmartGUARD") != "1" {
 		http.Error(w, "requête refusée", http.StatusForbidden)
 		return false
 	}
@@ -329,7 +329,7 @@ func (a *App) newSession() string {
 }
 
 func (a *App) validSession(r *http.Request) bool {
-	ck, err := r.Cookie("licguard_session")
+	ck, err := r.Cookie("smartguard_session")
 	if err != nil || ck.Value == "" {
 		return false
 	}
@@ -386,7 +386,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request, c Config) {
 	u := strings.TrimSpace(r.PostFormValue("username"))
 	p := r.PostFormValue("password")
 	if c.AdminPasswordHash != "" && subtle.ConstantTimeCompare([]byte(strings.ToLower(u)), []byte(strings.ToLower(c.AdminUser))) == 1 && checkPassword(c.AdminPasswordHash, p) {
-		http.SetCookie(w, &http.Cookie{Name: "licguard_session", Value: a.newSession(), Path: c.AdminPath,
+		http.SetCookie(w, &http.Cookie{Name: "smartguard_session", Value: a.newSession(), Path: c.AdminPath,
 			HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil})
 		a.logf("Connexion administrateur depuis %s", ip)
 		http.Redirect(w, r, c.AdminPath+"/admin", http.StatusSeeOther)
@@ -397,12 +397,12 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request, c Config) {
 }
 
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request, c Config) {
-	if ck, err := r.Cookie("licguard_session"); err == nil {
+	if ck, err := r.Cookie("smartguard_session"); err == nil {
 		a.sessMu.Lock()
 		delete(a.sessions, ck.Value)
 		a.sessMu.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: "licguard_session", Value: "", Path: c.AdminPath, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "smartguard_session", Value: "", Path: c.AdminPath, MaxAge: -1})
 	http.Redirect(w, r, c.AdminPath+"/admin", http.StatusSeeOther)
 }
 

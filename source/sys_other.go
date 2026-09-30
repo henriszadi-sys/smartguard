@@ -38,7 +38,10 @@ func hasDesktop() bool {
 	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
-func registryDir() string { return "/etc/licguard" }
+func registryDir() string { return "/etc/smartguard" }
+
+// legacyRegistryDir : registre des versions publiées sous l'ancien nom du produit.
+func legacyRegistryDir() string { return "/etc/licguard" }
 
 func defaultInstallDir(name string) string { return filepath.Join("/opt", strings.ToLower(name)) }
 

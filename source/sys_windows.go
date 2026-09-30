@@ -48,6 +48,15 @@ func registryDir() string {
 	if pd == "" {
 		pd = `C:\ProgramData`
 	}
+	return filepath.Join(pd, "SmartGUARD")
+}
+
+// legacyRegistryDir : registre des versions publiées sous l'ancien nom du produit.
+func legacyRegistryDir() string {
+	pd := os.Getenv("ProgramData")
+	if pd == "" {
+		pd = `C:\ProgramData`
+	}
 	return filepath.Join(pd, "LicGuard")
 }
 

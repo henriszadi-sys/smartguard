@@ -1,10 +1,10 @@
-# LicGuard — module de rappel d'expiration (v1.3)
+# SmartGUARD — module de rappel d'expiration (v1.3)
 
 Un seul fichier à lancer. Un assistant graphique demande toutes les informations, puis installe le module comme service sur le serveur.
 
 ## Installation sous Windows Server
 
-1. Copiez `Windows\LicGuard-Setup.exe` sur le serveur de l'application.
+1. Copiez `Windows\SmartGUARD-Setup.exe` sur le serveur de l'application.
 2. **Double-cliquez** dessus, puis acceptez la demande « Autoriser cette application à apporter des modifications ? ».
 3. L'assistant s'ouvre dans le navigateur. Laissez la petite fenêtre noire ouverte jusqu'à la fin.
 4. Suivez les 6 étapes :
@@ -25,8 +25,8 @@ Le programme est copié sous le nom du module (ex. `C:\Program Files\Kelio-Licen
 ## Installation sous Linux
 
 ```
-chmod +x licguard-setup
-sudo ./licguard-setup
+chmod +x smartguard-setup
+sudo ./smartguard-setup
 ```
 
 - **Serveur avec écran** : l'assistant s'ouvre dans le navigateur.
@@ -34,7 +34,7 @@ sudo ./licguard-setup
 
 ## Modifier, renommer, désinstaller
 
-Relancez l'assistant, soit `LicGuard-Setup.exe`, soit le programme installé. L'écran d'accueil liste les modules installés, avec trois boutons :
+Relancez l'assistant, soit `SmartGUARD-Setup.exe`, soit le programme installé. L'écran d'accueil liste les modules installés, avec trois boutons :
 
 - **Modifier** reprend les 6 étapes avec les valeurs actuelles. On peut changer le nom du module : le service est alors renommé.
 - **Administration** ouvre la page web de gestion quotidienne (dates, activation, journal).
@@ -58,7 +58,7 @@ Le module se place devant l'application. Les utilisateurs passent alors par l'ad
 
 ## Connexion à l'administration
 
-L'adresse est affichée à la fin de l'installation (ex. `http://serveur:8090/_licguard/admin`). Une page de connexion s'ouvre : identifiant **admin**, mot de passe choisi à l'étape 5 de l'assistant. Mot de passe oublié : relancez l'assistant sur le serveur, puis « Modifier » → étape « Sécurité ».
+L'adresse est affichée à la fin de l'installation (ex. `http://serveur:8090/_smartguard/admin`). Une page de connexion s'ouvre : identifiant **admin**, mot de passe choisi à l'étape 5 de l'assistant. Mot de passe oublié : relancez l'assistant sur le serveur, puis « Modifier » → étape « Sécurité ».
 
 ## Sécurité
 

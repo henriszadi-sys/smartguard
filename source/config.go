@@ -36,7 +36,7 @@ type Config struct {
 
 	Listen    string `json:"listen"`     // ex. ":8080"
 	Upstream  string `json:"upstream"`   // ex. "http://127.0.0.1:8081" (vide = pas de proxy)
-	AdminPath string `json:"admin_path"` // ex. "/_licguard"
+	AdminPath string `json:"admin_path"` // ex. "/_smartguard"
 	TLSCert   string `json:"tls_cert"`
 	TLSKey    string `json:"tls_key"`
 
@@ -56,8 +56,8 @@ const DefaultExpiredMessage = "L'assistance et le support technique à votre log
 
 func defaultConfig() Config {
 	return Config{
-		ModuleName:     "LicGuard",
-		ServiceName:    "LicGuard",
+		ModuleName:     "SmartGUARD",
+		ServiceName:    "SmartGUARD",
 		SoftwareName:   "Mon logiciel",
 		Enabled:        false,
 		WarningDays:    30,
@@ -68,7 +68,7 @@ func defaultConfig() Config {
 		Scripts:        []string{},
 		Listen:         ":8080",
 		Upstream:       "",
-		AdminPath:      "/_licguard",
+		AdminPath:      "/_smartguard",
 		AdminUser:      "admin",
 	}
 }
@@ -114,7 +114,7 @@ func (s *Store) normalize() {
 		c.ExpiredMessage = DefaultExpiredMessage
 	}
 	if c.AdminPath == "" {
-		c.AdminPath = "/_licguard"
+		c.AdminPath = "/_smartguard"
 	}
 	if !strings.HasPrefix(c.AdminPath, "/") {
 		c.AdminPath = "/" + c.AdminPath
