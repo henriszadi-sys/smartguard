@@ -15,17 +15,26 @@ import (
 
 // RunCmd exécute une commande avec délai maximal et renvoie un résumé pour le journal.
 func RunCmd(timeout time.Duration, name string, args ...string) string {
+	res, _ := run(timeout, name, args...)
+	return res
+}
+
+func run(timeout time.Duration, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return summarize(exec.CommandContext(ctx, name, args...), name+" "+strings.Join(args, " "))
+}
+
+func summarize(cmd *exec.Cmd, label string) (string, error) {
+	out, err := cmd.CombinedOutput()
 	res := strings.Join(strings.Fields(strings.ReplaceAll(string(out), "\n", " | ")), " ")
 	if len(res) > 400 {
 		res = res[:400] + "…"
 	}
 	if err != nil {
-		return fmt.Sprintf("ÉCHEC %s %s : %v %s", name, strings.Join(args, " "), err, res)
+		return fmt.Sprintf("ÉCHEC %s : %v %s", label, err, res), err
 	}
-	return fmt.Sprintf("OK %s %s", name, strings.Join(args, " "))
+	return "OK " + label, nil
 }
 
 // StopService arrête le service et empêche son redémarrage automatique.
@@ -56,16 +65,39 @@ func RestoreService(name string) []string {
 	}
 }
 
-// RunScript exécute un script ou une commande (PowerShell pour les .ps1 sous Windows).
+// Exécution des scripts : délai maximum par tentative, nombre de tentatives
+// et pause entre deux tentatives.
+const ScriptAttempts = 3
+
+var (
+	ScriptTimeout = 10 * time.Minute
+	retryDelay    = 5 * time.Second
+)
+
+// RunScript exécute un script ou une commande (PowerShell pour les .ps1 sous Windows),
+// en le retentant jusqu'à ScriptAttempts fois en cas d'échec.
 func RunScript(cmdline string) string {
-	if runtime.GOOS == "windows" {
-		l := strings.ToLower(cmdline)
-		if strings.HasSuffix(strings.Trim(l, `" `), ".ps1") {
-			return RunCmd(10*time.Minute, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", strings.Trim(cmdline, `"`))
+	var res string
+	for i := 1; i <= ScriptAttempts; i++ {
+		var err error
+		res, err = runScriptOnce(cmdline)
+		if err == nil {
+			if i > 1 {
+				return fmt.Sprintf("%s (tentative %d/%d)", res, i, ScriptAttempts)
+			}
+			return res
 		}
-		return RunCmd(10*time.Minute, "cmd.exe", "/C", cmdline)
+		if i < ScriptAttempts {
+			time.Sleep(retryDelay)
+		}
 	}
-	return RunCmd(10*time.Minute, "/bin/sh", "-c", cmdline)
+	return fmt.Sprintf("%s (après %d tentatives)", res, ScriptAttempts)
+}
+
+func runScriptOnce(cmdline string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ScriptTimeout)
+	defer cancel()
+	return summarize(scriptCommand(ctx, cmdline), cmdline)
 }
 
 // Logf : fonction de journalisation utilisée par les actions.

@@ -30,9 +30,10 @@ type Status struct {
 	Blocked      bool   `json:"blocked,omitempty"`
 }
 
-// EffectiveNow protège contre un retour en arrière de l'horloge système.
+// EffectiveNow protège contre un retour en arrière de l'horloge système :
+// le temps pris en compte ne recule jamais sous la dernière heure vue.
 func EffectiveNow(st config.State, now time.Time) time.Time {
-	if !st.LastSeen.IsZero() && now.Before(st.LastSeen.Add(-2*time.Hour)) {
+	if now.Before(st.LastSeen) {
 		return st.LastSeen
 	}
 	return now
@@ -51,7 +52,7 @@ func ComputeStatus(c config.Config, st config.State, now time.Time) Status {
 	s.Configured = true
 	stop := end // expiration (arrêt des services) le jour de la date de fin, à 00:00
 	s.ExpiresAt = stop.Format(time.RFC3339)
-	now = EffectiveNow(st, now)
+	now = EffectiveNow(st, now).In(time.Local)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	s.DaysLeft = int(math.Round(stop.Sub(today).Hours() / 24))
 	s.Expired = !now.Before(stop)
