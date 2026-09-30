@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"smartguard/internal/config"
+	"smartguard/internal/license"
 	"smartguard/internal/logging"
 	"smartguard/internal/proxy"
 	"smartguard/internal/scheduler"
@@ -31,6 +32,7 @@ type Server struct {
 	Now     func() time.Time      // horloge injectable (time.Now par défaut)
 	Restore func(c config.Config) // réactivation des services après renouvellement
 	Changed func()                // appelée après un enregistrement de la configuration
+	License *license.Manager      // liaison licence / poste (nil = fonction absente)
 
 	sessMu   sync.Mutex
 	sessions map[string]time.Time
@@ -124,6 +126,11 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 			s.Restore(c)
 		}
 		WriteJSON(w, map[string]any{"ok": true})
+	case "/api/license":
+		if !s.auth(w, r) {
+			return
+		}
+		s.apiLicense(w, r)
 	case "/api/log":
 		if !s.auth(w, r) {
 			return
@@ -204,6 +211,55 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			go s.Changed()
 		}
 		WriteJSON(w, map[string]any{"ok": true})
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+// apiLicense : consultation (GET) puis activation / désactivation (POST) de la licence du poste.
+// La clé complète n'est jamais renvoyée ni journalisée : seule sa version masquée.
+func (s *Server) apiLicense(w http.ResponseWriter, r *http.Request) {
+	if s.License == nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		WriteJSON(w, s.License.Status())
+	case http.MethodPost:
+		if !postOnly(w, r) {
+			return
+		}
+		var in struct {
+			Action string `json:"action"` // activate | deactivate
+			Key    string `json:"key"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+			http.Error(w, "données invalides", http.StatusBadRequest)
+			return
+		}
+		var err error
+		switch in.Action {
+		case "activate":
+			var st license.Status
+			if st, err = s.License.Activate(in.Key); err == nil {
+				s.Log.Printf("Licence %s activée sur le poste %s par %s", st.MaskedKey, st.MachineID, clientIP(r))
+			}
+		case "deactivate":
+			var rec license.Record
+			if rec, err = s.License.Deactivate(); err == nil {
+				s.Log.Printf("Licence %s désactivée (poste %s) par %s", license.Mask(rec.Key), rec.MachineID, clientIP(r))
+			}
+		default:
+			err = fmt.Errorf("action inconnue")
+		}
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		WriteJSON(w, s.License.Status())
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}

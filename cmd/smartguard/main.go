@@ -21,6 +21,7 @@ import (
 	"smartguard/internal/actions"
 	"smartguard/internal/admin"
 	"smartguard/internal/config"
+	"smartguard/internal/license"
 	"smartguard/internal/logging"
 	"smartguard/internal/platform"
 	"smartguard/internal/proxy"
@@ -31,6 +32,7 @@ import (
 
 type program struct {
 	store   *config.Store
+	lic     *license.Manager
 	log     *logging.Logger
 	admin   *admin.Server
 	watcher *scheduler.Watcher
@@ -50,6 +52,9 @@ func (p *program) run() {
 	p.srv = &http.Server{Addr: c.Listen, Handler: p.admin.Handler(), ReadHeaderTimeout: 15 * time.Second}
 	p.log.Printf("%s v%s démarré — écoute %s, application : %s, administration : %s/admin",
 		c.ModuleName, version.Number, c.Listen, orNone(c.Upstream), c.AdminPath)
+	if ls := p.lic.Status(); ls.State != license.StateNone {
+		p.log.Printf("Licence %s : %s", ls.MaskedKey, ls.Message)
+	}
 	var err error
 	if c.TLSCert != "" && c.TLSKey != "" {
 		err = p.srv.ListenAndServeTLS(c.TLSCert, c.TLSKey)
@@ -75,6 +80,36 @@ func (p *program) Stop(s service.Service) error {
 	return nil
 }
 
+// runLicense : commande « license » — état (défaut), activation ou désactivation.
+// La clé complète n'est jamais affichée ni journalisée.
+func runLicense(lic *license.Manager, logger *logging.Logger, args []string) {
+	printStatus := func(s license.Status) {
+		fmt.Printf("Poste       : %s\nLicence     : %s\nActivée le  : %s\nÉtat        : %s — %s\n",
+			s.MachineID, orDash(s.MaskedKey), orDash(s.ActivatedAt), s.State, s.Message)
+	}
+	switch {
+	case len(args) == 0:
+		printStatus(lic.Status())
+	case args[0] == "activate" && len(args) == 2:
+		s, err := lic.Activate(args[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		logger.Printf("Licence %s activée sur le poste %s (ligne de commande)", s.MaskedKey, s.MachineID)
+		printStatus(s)
+	case args[0] == "deactivate" && len(args) == 1:
+		rec, err := lic.Deactivate()
+		if err != nil {
+			log.Fatal(err)
+		}
+		logger.Printf("Licence %s désactivée (poste %s, ligne de commande)", license.Mask(rec.Key), rec.MachineID)
+		fmt.Printf("Licence %s désactivée. Elle peut être activée sur un autre poste.\n", license.Mask(rec.Key))
+	default:
+		usage()
+		os.Exit(2)
+	}
+}
+
 func orNone(s string) string {
 	if s == "" {
 		return "(aucune — mode script seul)"
@@ -97,6 +132,7 @@ Commandes :
   start | stop | restart   piloter le service
   status         afficher l'état du décompte
   check          diagnostic : configuration, port, application
+  license [activate <clé> | deactivate]   état, activation ou désactivation de la licence du poste
   set-password   définir le mot de passe administrateur
 
 Options :
@@ -162,9 +198,11 @@ func main() {
 		Store:  store,
 		Expire: func(c config.Config) { actions.Enforce(c, logger.Printf) },
 	}
+	lic := license.NewManager(abs)
 	srv := &admin.Server{
 		Store:   store,
 		Log:     logger,
+		License: lic,
 		Proxy:   px,
 		Restore: func(c config.Config) { actions.Restore(c, logger.Printf) },
 		Changed: watcher.Tick,
@@ -177,7 +215,7 @@ func main() {
 		Description: "Décompte d'expiration de licence / contrat de support pour " + c.SoftwareName,
 		Arguments:   []string{"-config", abs, "run"},
 	}
-	prg := &program{store: store, log: logger, admin: srv, watcher: watcher}
+	prg := &program{store: store, lic: lic, log: logger, admin: srv, watcher: watcher}
 	s, err := service.New(prg, svcCfg)
 	if err != nil {
 		log.Fatalf("ERREUR service : %v", err)
@@ -199,6 +237,8 @@ func main() {
 		fmt.Printf("Module      : %s (%s)\nLogiciel    : %s\nContrat     : %s → %s\nJours rest. : %d\nExpiré      : %v\nArrêt à la fin : %v (arrêté : %v)\nBandeau     : %v\nMessage     : %s\n",
 			c.ModuleName, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled],
 			c.SoftwareName, c.StartDate, c.EndDate, st.DaysLeft, st.Expired, c.StopOnEnd, st.Stopped, st.Show, st.Message)
+	case "license":
+		runLicense(lic, logger, flag.Args()[1:])
 	case "set-password":
 		pw := os.Getenv("SMARTGUARD_PASSWORD")
 		if pw == "" {

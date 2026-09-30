@@ -1,4 +1,4 @@
-# SmartGUARD — module de rappel d'expiration (v1.4)
+# SmartGUARD — module de rappel d'expiration (v1.5)
 
 Un seul fichier à lancer. Un assistant graphique demande toutes les informations, puis installe le module comme service sur le serveur.
 
@@ -94,4 +94,17 @@ L'adresse est affichée à la fin de l'installation (ex. `http://serveur:8090/_s
 Kelio-Licence.exe status         état du décompte
 Kelio-Licence.exe set-password   changer le mot de passe
 Kelio-Licence.exe check          diagnostic complet
+Kelio-Licence.exe license                    état de la licence du poste
+Kelio-Licence.exe license activate <clé>     activer la licence sur ce serveur
+Kelio-Licence.exe license deactivate         désactiver (première étape d'un transfert)
 ```
+
+## Licence par poste
+
+Le « poste » est le serveur qui héberge le module. Dans l'administration, la carte **Licence / poste** affiche l'identifiant du poste, la clé (masquée) et l'état :
+
+- **Activée sur ce poste** : la clé `SGRD-XXXX-XXXX-XXXX-XXXX` est liée à ce serveur.
+- **Liée à un autre poste** : le dossier du module a été copié depuis un autre serveur. Désactivez puis activez la licence sur ce poste.
+- **Non activée** : aucune licence n'est liée à ce serveur.
+
+Pour **transférer** une licence, désactivez-la sur l'ancien serveur, puis activez-la sur le nouveau. La licence n'arrête ni le décompte ni l'arrêt à la date de fin. Sans serveur central, SmartGUARD détecte une installation copiée, mais pas l'usage de la même clé sur deux serveurs distincts.

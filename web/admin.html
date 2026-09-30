@@ -60,6 +60,24 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       </dl>
       <div class="preview" id="preview" hidden></div>
     </section>
+    <section class="card" id="license-card">
+      <h2>Licence / poste</h2>
+      <span class="pill off" id="lic-state" style="margin-top:0">–</span>
+      <dl class="kv">
+        <dt>Poste</dt><dd id="lic-machine"><code>–</code></dd>
+        <dt>Licence</dt><dd id="lic-key">–</dd>
+        <dt>Activée le</dt><dd id="lic-date">–</dd>
+      </dl>
+      <div class="hint" id="lic-msg" style="margin-top:8px"></div>
+      <label for="lic-input">Clé de licence <span class="hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
+      <input type="text" id="lic-input" maxlength="40" autocomplete="off" spellcheck="false" placeholder="SGRD-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">
+        <button type="button" class="primary" id="lic-activate">Activer sur ce poste</button>
+        <button type="button" id="lic-deactivate" title="Première étape d'un transfert vers un autre poste">Désactiver</button>
+        <span id="lic-res" style="font-size:13px"></span>
+      </div>
+      <p class="hint" style="margin:12px 0 0">La licence est liée à ce serveur. Pour la transférer : désactivez-la ici, puis activez-la sur le nouveau poste. Elle n'empêche pas le décompte ni l'arrêt.</p>
+    </section>
     <section class="card" id="snippet-card">
       <h2>Intégration</h2>
       <div id="snip"></div>
@@ -172,8 +190,31 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       $('stop_on_end').checked = !!c.stop_on_end;
       paint(c);
     }).catch(function(e){ msg(e.message, true); });
-    loadLog();
+    loadLog(); loadLicense();
   }
+  var LIC = {none:['Non activée','off'], active:['Activée sur ce poste','ok'], other_machine:['Liée à un autre poste','critical'], error:['Erreur','critical']};
+  function paintLicense(l){
+    var v = LIC[l.state] || LIC.error;
+    $('lic-state').textContent = v[0]; $('lic-state').className = 'pill ' + v[1];
+    $('lic-machine').querySelector('code').textContent = l.machine_id || '–';
+    $('lic-key').textContent = l.masked_key || '–';
+    $('lic-date').textContent = l.activated_at || '–';
+    $('lic-msg').textContent = l.message || '';
+  }
+  function loadLicense(){ api('/api/license').then(paintLicense).catch(function(){ $('license-card').hidden = true; }); }
+  function licMsg(t, err){ var m=$('lic-res'); m.textContent=t; m.style.color = err ? 'var(--crit)' : 'var(--ok)'; if(!err) setTimeout(function(){ if(m.textContent===t) m.textContent=''; }, 4000); }
+  function licAct(body, done){
+    api('/api/license', {method:'POST', body: JSON.stringify(body)}).then(function(l){ paintLicense(l); licMsg(done); loadLog(); if (body.action === 'activate') $('lic-input').value = ''; }).catch(function(e){ licMsg(e.message, true); });
+  }
+  $('lic-activate').addEventListener('click', function(){
+    var k = $('lic-input').value.trim();
+    if (!k) { licMsg('Saisissez la clé de licence.', true); return; }
+    licAct({action:'activate', key:k}, 'Licence activée');
+  });
+  $('lic-deactivate').addEventListener('click', function(){
+    if (!confirm('Désactiver la licence sur ce poste ?\n(elle pourra ensuite être activée sur un autre poste)')) return;
+    licAct({action:'deactivate'}, 'Licence désactivée');
+  });
   function loadLog(){ api('/api/log').then(function(l){ $('log').textContent = l.length ? l.join('\n') : '(vide)'; }).catch(function(){}); }
 
   $('f').addEventListener('submit', function(e){
