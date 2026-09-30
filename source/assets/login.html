@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.ModuleName}} — connexion</title>
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#1b2230;--muted:#667085;--line:#dfe3ea;--accent:#1f5eff;--accent-ink:#fff;--crit:#d92d20;--crit-soft:#fdecea;--field:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1016;--card:#171b23;--ink:#e8eaf0;--muted:#98a1b3;--line:#2a303c;--accent:#6b93ff;--accent-ink:#0d1016;--crit:#ff6b62;--crit-soft:#321716;--field:#11151c}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",Roboto,Arial,sans-serif;padding:16px}
+.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px 28px;box-shadow:0 20px 50px rgba(20,30,60,.10)}
+.logo{width:48px;height:48px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:22px;margin-bottom:16px}
+h1{margin:0;font-size:20px}
+.sub{margin:4px 0 22px;color:var(--muted);font-size:14px}
+label{display:block;font-weight:600;font-size:13.5px;margin:14px 0 5px}
+input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink);font:inherit}
+input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:9px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:600;cursor:pointer}
+.err{background:var(--crit-soft);color:var(--crit);border-radius:9px;padding:10px 12px;font-size:14px}
+.help{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<form class="card" method="post" action="login" autocomplete="on">
+  <div class="logo">⏳</div>
+  <h1>{{.ModuleName}}</h1>
+  <p class="sub">Administration du rappel d'expiration{{if .SoftwareName}} — {{.SoftwareName}}{{end}}</p>
+  {{if .NoPassword}}<div class="err">Aucun mot de passe n'est défini. Relancez l'assistant d'installation sur le serveur (bouton « Modifier », étape Sécurité).</div>{{end}}
+  {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
+  <label for="u">Identifiant</label>
+  <input id="u" name="username" value="{{.User}}" autocomplete="username" required>
+  <label for="p">Mot de passe</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required autofocus>
+  <button type="submit">Se connecter</button>
+  <p class="help">Identifiant par défaut : <b>admin</b>. Mot de passe oublié ? Sur le serveur, relancez <b>LicGuard-Setup</b> → « Modifier » → étape « Sécurité » pour en définir un nouveau.</p>
+</form>
+</body>
+</html>

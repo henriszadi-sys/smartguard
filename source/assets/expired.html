@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.SoftwareName}} — licence expirée</title>
+<style>
+  :root{--bg:#f4f1ee;--card:#fff;--ink:#222;--muted:#666;--accent:#7a0f14}
+  @media (prefers-color-scheme:dark){:root{--bg:#161214;--card:#221c1e;--ink:#eee;--muted:#aaa;--accent:#ff6b72}}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--ink);font:16px/1.55 "Segoe UI",Roboto,Arial,sans-serif;padding:16px;box-sizing:border-box}
+  .card{max-width:540px;background:var(--card);border-radius:16px;padding:36px 32px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.12)}
+  .icon{width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent);color:#fff;font-size:34px;line-height:64px;font-weight:700}
+  h1{margin:0 0 12px;font-size:24px;color:var(--accent)}
+  p{margin:8px 0}.muted{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">!</div>
+  <h1>{{.SoftwareName}} — accès suspendu</h1>
+  <p>{{.Message}}</p>
+  {{if .Contact}}<p class="muted">Fournisseur : {{.Contact}}</p>{{end}}
+  <p class="muted">{{.ModuleName}}</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administration — rappel d'expiration</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#1f5eff;--ok:#12805c;--warn:#b7791f;--crit:#d92d20;--exp:#7a0f14;--field:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--ink:#e8eaf0;--muted:#98a1b3;--line:#2a303c;--accent:#6b93ff;--ok:#3ccf91;--warn:#f0b44c;--crit:#ff6b62;--exp:#ff8a90;--field:#11151c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",Roboto,Arial,sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 16px}
+header .in,main{max-width:1060px;margin:0 auto}
+header h1{margin:0;font-size:18px}header p{margin:2px 0 0;color:var(--muted);font-size:13px}
+main{padding:16px;display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.count{font-size:64px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.count small{font-size:16px;font-weight:600;color:var(--muted);margin-left:6px}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid currentColor;margin:10px 0}
+.ok{color:var(--ok)}.warning{color:var(--warn)}.critical{color:var(--crit)}.expired{color:var(--exp)}.off{color:var(--muted)}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;background:var(--accent)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin-top:10px}.kv dt{color:var(--muted)}.kv dd{margin:0}
+.preview{margin-top:14px;border-radius:8px;padding:10px 12px;font-size:13px;background:#ffd66b;color:#1f1300}
+.preview.critical{background:#e5484d;color:#fff}.preview.expired{background:#7a0f14;color:#fff}
+label{display:block;font-weight:600;font-size:13px;margin:14px 0 4px}
+.hint{font-weight:400;color:var(--muted);font-size:12px}
+input[type=text],input[type=date],input[type=number],input[type=password],textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);font:inherit}
+textarea{min-height:70px;font-family:Consolas,Menlo,monospace;font-size:13px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:520px){.row{grid-template-columns:1fr}}
+fieldset{border:0;border-top:1px solid var(--line);margin:18px 0 0;padding:6px 0 0}
+legend{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding-right:8px}
+.switch{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:4px;cursor:pointer}
+.switch input{width:18px;height:18px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;position:sticky;bottom:0;background:var(--card);padding:12px 0 2px}
+button{font:inherit;font-weight:600;border-radius:8px;padding:9px 16px;cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#msg{margin-left:auto;align-self:center;font-size:13px}
+code,pre{font-family:Consolas,Menlo,monospace;font-size:12px}
+pre{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all;max-height:260px;margin:0}
+.side{display:grid;gap:16px}
+</style>
+</head>
+<body>
+<header><div class="in" style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><h1 id="title">Rappel d'expiration</h1><p id="subtitle">Administration du module</p></div><a href="logout" style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 12px">Se déconnecter</a></div></header>
+<main>
+  <div class="side">
+    <section class="card">
+      <h2>Décompte</h2>
+      <div class="count" id="days">–</div>
+      <span class="pill off" id="state">–</span>
+      <div class="bar"><i id="prog" style="width:0"></i></div>
+      <div class="hint" id="progtxt"></div>
+      <dl class="kv">
+        <dt>Logiciel</dt><dd id="s-soft">–</dd>
+        <dt>Période</dt><dd id="s-period">–</dd>
+        <dt>Arrêt prévu</dt><dd id="s-stop">–</dd>
+        <dt>Actions</dt><dd id="s-actions">–</dd>
+      </dl>
+      <div class="preview" id="preview" hidden></div>
+    </section>
+    <section class="card" id="snippet-card">
+      <h2>Intégration</h2>
+      <div id="snip"></div>
+    </section>
+    <section class="card">
+      <h2>Journal</h2>
+      <pre id="log">…</pre>
+    </section>
+  </div>
+
+  <form class="card" id="f" autocomplete="off">
+    <h2>Paramètres</h2>
+    <label class="switch"><input type="checkbox" id="enabled"> <span><b>Module activé</b><br><span class="hint">Désactivé : aucun bandeau, aucun blocage, aucune action à l'expiration.</span></span></label>
+
+    <fieldset><legend>Identification</legend>
+      <div class="row">
+        <div><label for="module_name">Nom du module <span class="hint">(renommable)</span></label><input type="text" id="module_name" maxlength="80"></div>
+        <div><label for="software_name">Nom du logiciel contrôlé</label><input type="text" id="software_name" maxlength="120"></div>
+      </div>
+      <label for="supplier_contact">Contact fournisseur <span class="hint">(optionnel, affiché dans le bandeau)</span></label>
+      <input type="text" id="supplier_contact" maxlength="200" placeholder="ex. support@fournisseur.ci — +225 07 00 00 00 00">
+    </fieldset>
+
+    <fieldset><legend>Contrat / licence</legend>
+      <div class="row">
+        <div><label for="start_date">Date de début</label><input type="date" id="start_date"></div>
+        <div><label for="end_date">Date de fin <span class="hint">(expiration — arrêt à 00:00 ce jour-là)</span></label><input type="date" id="end_date"></div>
+      </div>
+      <label for="warning_days">Début du décompte <span class="hint">(jours avant l'expiration — 30 = un mois)</span></label>
+      <input type="number" id="warning_days" min="1" max="365" style="max-width:140px">
+      <label for="message">Message de décompte <span class="hint">— variables : {jours} {logiciel} {date_fin} {fournisseur}</span></label>
+      <textarea id="message" style="min-height:56px;font-family:inherit"></textarea>
+      <label for="expired_message">Message après expiration</label>
+      <textarea id="expired_message" style="min-height:56px;font-family:inherit"></textarea>
+    </fieldset>
+
+    <fieldset><legend>À la date d'expiration</legend>
+      <label for="services">Services à arrêter <span class="hint">— un nom de service par ligne (ex. Tomcat9, apache2). Arrêtés puis désactivés.</span></label>
+      <textarea id="services" placeholder="Tomcat9"></textarea>
+      <label for="blocked_urls">URL à bloquer <span class="hint">— une par ligne : chemin (/app) ou URL complète (http://serveur:8080/app). « / » bloque tout.</span></label>
+      <textarea id="blocked_urls" placeholder="/"></textarea>
+      <label for="scripts">Commandes / scripts à exécuter <span class="hint">— un par ligne (.bat, .ps1, .sh ou commande)</span></label>
+      <textarea id="scripts" placeholder="C:\Scripts\fin-licence.bat"></textarea>
+    </fieldset>
+
+    <fieldset><legend>Sécurité</legend>
+      <label for="new_password">Nouveau mot de passe administrateur <span class="hint">(laisser vide pour conserver)</span></label>
+      <input type="password" id="new_password" autocomplete="new-password" style="max-width:320px">
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="primary">Enregistrer</button>
+      <button type="button" id="restore" title="Après renouvellement : réactive et redémarre les services listés">Réactiver les services</button>
+      <span id="msg"></span>
+    </div>
+  </form>
+</main>
+<script>
+(function(){
+  var base = location.pathname.replace(/\/(admin)?\/?$/, '');
+  var $ = function(id){ return document.getElementById(id); };
+  var fields = ['module_name','software_name','supplier_contact','start_date','end_date','warning_days','message','expired_message'];
+  var lists = ['services','blocked_urls','scripts'];
+  var LABEL = {ok:'Contrat en cours', warning:'Décompte en cours', critical:'Expiration imminente', expired:'Expiré'};
+
+  function fmt(d){ if(!d) return '–'; var p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+  function msg(t, err){ var m=$('msg'); m.textContent=t; m.style.color = err ? 'var(--crit)' : 'var(--ok)'; if(!err) setTimeout(function(){ if(m.textContent===t) m.textContent=''; }, 4000); }
+  function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-LicGuard':'1','Content-Type':'application/json'}, opt.headers||{}); opt.credentials='same-origin';
+    return fetch(base + path, opt).then(function(r){ if(r.status===401){ location.href = base + '/admin'; throw new Error('Session expirée'); } return r.json().catch(function(){ return {}; }).then(function(j){ if(!r.ok) throw new Error(j.error || ('Erreur ' + r.status)); return j; }); }); }
+
+  function paint(c){
+    var s = c.status;
+    document.title = c.module_name + ' — administration';
+    $('title').textContent = c.module_name;
+    $('subtitle').textContent = 'Rappel d\u2019expiration — ' + (c.software_name || 'logiciel non renseigné');
+    var d = $('days');
+    if (!s.configured) { d.innerHTML = '–'; }
+    else if (s.expired) { d.innerHTML = '0<small>jour</small>'; }
+    else { d.innerHTML = s.days_left + '<small>' + (s.days_left > 1 ? 'jours' : 'jour') + '</small>'; }
+    var st = $('state');
+    var lvl = !c.enabled ? 'off' : s.level;
+    st.className = 'pill ' + lvl;
+    st.textContent = !c.enabled ? 'Module désactivé' : (s.configured ? LABEL[s.level] : 'Dates à renseigner');
+    d.className = 'count ' + (c.enabled ? s.level : 'off');
+    $('prog').style.width = (s.progress||0) + '%';
+    $('progtxt').textContent = s.configured && c.start_date ? (s.progress + ' % de la période écoulée') : '';
+    $('s-soft').textContent = c.software_name || '–';
+    $('s-period').textContent = fmt(c.start_date) + ' → ' + fmt(c.end_date);
+    $('s-stop').textContent = s.expires_at ? new Date(s.expires_at).toLocaleString('fr-FR') : '–';
+    $('s-actions').textContent = c.actions_done_at ? ('exécutées le ' + c.actions_done_at) : (s.expired ? 'en attente' : 'non déclenchées');
+    var pv = $('preview');
+    if (s.show) { pv.hidden = false; pv.className = 'preview ' + s.level; pv.textContent = 'Aperçu : ' + s.message; }
+    else if (c.enabled && s.configured) { pv.hidden = false; pv.className = 'preview'; pv.style.opacity = .7; pv.textContent = 'Le bandeau apparaîtra ' + c.warning_days + ' jours avant l\u2019expiration.'; }
+    else pv.hidden = true;
+    var src = location.origin + base + '/banner.js';
+    $('snip').innerHTML = (c.proxy
+      ? '<p class="hint" style="margin-top:0">Mode <b>proxy</b> actif : le bandeau est injecté automatiquement dans les pages de l\u2019application.</p><p class="hint">Pour intégrer le bandeau manuellement (autre serveur), ajoutez avant <code>&lt;/body&gt;</code> :</p>'
+      : '<p class="hint" style="margin-top:0">Mode <b>script</b> : ajoutez cette ligne avant <code>&lt;/body&gt;</code> dans la page d\u2019accueil / le gabarit de l\u2019application :</p>')
+      + '<pre></pre>';
+    $('snip').querySelector('pre').textContent = '<script src="' + src + '" defer><\/script>';
+  }
+
+  function load(fill){
+    api('/api/config').then(function(c){
+      if (fill === false) { paint(c); return; }
+      fields.forEach(function(k){ $(k).value = c[k] == null ? '' : c[k]; });
+      lists.forEach(function(k){ $(k).value = (c[k]||[]).join('\n'); });
+      $('enabled').checked = !!c.enabled;
+      paint(c);
+    }).catch(function(e){ msg(e.message, true); });
+    loadLog();
+  }
+  function loadLog(){ api('/api/log').then(function(l){ $('log').textContent = l.length ? l.join('\n') : '(vide)'; }).catch(function(){}); }
+
+  $('f').addEventListener('submit', function(e){
+    e.preventDefault();
+    var body = { enabled: $('enabled').checked, new_password: $('new_password').value };
+    fields.forEach(function(k){ body[k] = $(k).value; });
+    body.warning_days = parseInt(body.warning_days, 10) || 30;
+    lists.forEach(function(k){ body[k] = $(k).value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean); });
+    api('/api/config', {method:'POST', body: JSON.stringify(body)})
+      .then(function(){ $('new_password').value=''; msg('Enregistré'); load(); })
+      .catch(function(e){ msg(e.message, true); });
+  });
+  $('restore').addEventListener('click', function(){
+    if (!confirm('Réactiver et redémarrer les services listés ?\n(à utiliser après renouvellement du contrat — pensez à mettre à jour la date de fin)')) return;
+    api('/api/restore', {method:'POST', body:'{}'}).then(function(){ msg('Services relancés — voir le journal'); loadLog(); }).catch(function(e){ msg(e.message, true); });
+  });
+  load();
+  setInterval(function(){ load(false); loadLog(); }, 60000);
+})();
+</script>
+</body>
+</html>

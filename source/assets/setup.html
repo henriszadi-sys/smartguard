@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Assistant d'installation — rappel d'expiration</title>
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#1b2230;--muted:#667085;--line:#dfe3ea;--soft:#f6f7f9;--accent:#1f5eff;--accent-ink:#fff;--accent-soft:#e8efff;--ok:#12805c;--ok-soft:#e5f5ee;--warn:#b7791f;--crit:#d92d20;--crit-soft:#fdecea;--field:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1016;--card:#171b23;--ink:#e8eaf0;--muted:#98a1b3;--line:#2a303c;--soft:#1d222c;--accent:#6b93ff;--accent-ink:#0d1016;--accent-soft:#1c2640;--ok:#3ccf91;--ok-soft:#12291f;--warn:#f0b44c;--crit:#ff6b62;--crit-soft:#321716;--field:#11151c}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px}
+.shell{width:100%;max-width:980px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px rgba(20,30,60,.10);display:grid;grid-template-columns:250px 1fr;overflow:hidden;min-height:620px}
+aside{background:var(--soft);border-right:1px solid var(--line);padding:26px 20px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+.logo{width:38px;height:38px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800;font-size:18px}
+.brand b{display:block;font-size:15px}.brand span{font-size:12px;color:var(--muted)}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+ol.steps li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--muted);font-size:14px}
+ol.steps li i{flex:none;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700;background:var(--card)}
+ol.steps li.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+ol.steps li.on i{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+ol.steps li.done i{border-color:var(--ok);background:var(--ok);color:#fff}
+.side-note{margin-top:26px;font-size:12px;color:var(--muted)}
+section.main{display:flex;flex-direction:column;min-width:0}
+.content{padding:30px 34px;flex:1}
+.content h1{margin:0 0 4px;font-size:22px}
+.lead{margin:0 0 22px;color:var(--muted)}
+footer{display:flex;gap:10px;align-items:center;padding:16px 34px;border-top:1px solid var(--line);background:var(--card)}
+footer .grow{flex:1}
+label{display:block;font-weight:600;font-size:13.5px;margin:16px 0 5px}
+.hint{font-weight:400;color:var(--muted);font-size:12.5px}
+input[type=text],input[type=date],input[type=number],input[type=password],input[type=search],textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink);font:inherit}
+input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+textarea{min-height:64px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+button{font:inherit;font-weight:600;border-radius:9px;padding:10px 18px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.danger{color:var(--crit)}
+button.small{padding:6px 12px;font-size:13px}
+button:disabled{opacity:.5;cursor:default}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.choice label{margin:0;font-weight:400;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;display:block}
+.choice label b{display:block;font-size:14.5px;margin-bottom:3px}
+.choice label span{font-size:13px;color:var(--muted)}
+.choice input{position:absolute;opacity:0}
+.choice label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.toggle{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1px solid var(--line);border-radius:12px;margin-top:18px;cursor:pointer;font-weight:400}
+.toggle input{width:18px;height:18px;margin-top:2px;flex:none}
+.toggle b{display:block;font-size:14px}
+.check{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-left:8px}
+.check.ok{color:var(--ok)}.check.bad{color:var(--crit)}
+.box{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.box .tools{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);background:var(--soft)}
+.svc-list{max-height:220px;overflow:auto}
+.svc{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-weight:400;margin:0;font-size:13.5px}
+.svc:last-child{border-bottom:0}
+.svc input{width:16px;height:16px;flex:none}
+.svc .n{flex:1;min-width:0}.svc .n small{display:block;color:var(--muted);font-family:Consolas,Menlo,monospace;font-size:12px}
+.tag{font-size:11px;padding:1px 8px;border-radius:99px;background:var(--soft);color:var(--muted);flex:none}
+.tag.run{background:var(--ok-soft);color:var(--ok)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--ink);border-radius:99px;padding:3px 6px 3px 12px;font-size:13px}
+.chip button{border:0;background:transparent;padding:0 6px;font-size:16px;line-height:1;color:var(--muted)}
+.adder{display:flex;gap:8px}.adder input{flex:1}
+details{margin-top:16px}summary{cursor:pointer;color:var(--accent);font-size:13.5px;font-weight:600}
+.recap{display:grid;grid-template-columns:190px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+.recap dt,.recap dd{margin:0;padding:9px 14px;border-bottom:1px solid var(--line)}
+.recap dt{color:var(--muted);background:var(--soft)}
+.recap dd{word-break:break-word}
+.recap dt:nth-last-child(2),.recap dd:last-child{border-bottom:0}
+.error{background:var(--crit-soft);color:var(--crit);border-radius:10px;padding:10px 14px;margin-top:16px;font-size:14px}
+ul.result li{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+ul.result{list-style:none;padding:0;margin:0 0 18px}
+ul.result .i{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;color:#fff;background:var(--ok)}
+ul.result .i.x{background:var(--crit)}
+ul.result small{display:block;color:var(--muted);word-break:break-word;white-space:pre-wrap;font-size:12.5px}
+pre{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;white-space:pre-wrap;word-break:break-all;font:12.5px Consolas,Menlo,monospace;margin:6px 0 0}
+.installs{display:grid;gap:12px;margin-bottom:22px}
+.inst{border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.inst h3{margin:0;font-size:15.5px}.inst p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.inst .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.days{font-weight:700}.days.warning{color:var(--warn)}.days.critical,.days.expired{color:var(--crit)}.days.ok{color:var(--ok)}
+.new{width:100%;padding:18px;border:1.5px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:12px;font-size:15px}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes r{to{transform:rotate(360deg)}}
+.big-ok{width:56px;height:56px;border-radius:50%;background:var(--ok);color:#fff;display:grid;place-items:center;font-size:28px;margin-bottom:12px}
+[hidden]{display:none!important}
+@media (max-width:820px){
+  body{padding:0}
+  .shell{grid-template-columns:1fr;grid-template-rows:auto 1fr;border-radius:0;border:0;min-height:100vh}
+  aside{border-right:0;border-bottom:1px solid var(--line);padding:16px}
+  .brand{margin-bottom:12px}
+  ol.steps{grid-auto-flow:column;overflow-x:auto;gap:2px}
+  ol.steps li{padding:6px 8px;white-space:nowrap}
+  ol.steps li span{display:none}ol.steps li.on span{display:inline}
+  .side-note{display:none}
+  .content{padding:20px 16px}footer{padding:12px 16px}
+  .row,.choice{grid-template-columns:1fr}
+  .recap{grid-template-columns:1fr}.recap dt{border-bottom:0;padding-bottom:2px}
+  .inst{grid-template-columns:1fr}.inst .acts{justify-content:flex-start}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand"><div class="logo">⏳</div><div><b>Rappel d'expiration</b><span id="ver">Assistant d'installation</span></div></div>
+    <ol class="steps" id="steps"></ol>
+    <p class="side-note" id="side-note">Le module affiche un décompte aux utilisateurs de l'application avant la fin du contrat, puis arrête les services à l'échéance.</p>
+  </aside>
+  <section class="main">
+    <div class="content" id="content"></div>
+    <footer id="footer">
+      <button type="button" id="back">← Retour</button>
+      <span class="grow"></span>
+      <button type="button" class="primary" id="next">Suivant →</button>
+    </footer>
+  </section>
+</div>
+
+<script>
+(function(){
+'use strict';
+var TOKEN = new URLSearchParams(location.search).get('t') || '';
+var STEPS = ['Logiciel','Contrat','Affichage','À l\u2019expiration','Sécurité','Récapitulatif'];
+var info = null, services = null, step = -1; // -1 = accueil
+var d = {}; // données saisies
+
+function blank(){
+  return { existing:'', module_name:'', software_name:'', supplier_contact:'', enabled:true,
+    start_date: today(), end_date:'', warning_days:30, message: info.message, expired_message: info.expired,
+    services:[], blocked_urls:['/'], scripts:[], mode:'proxy', port:8080, upstream:'http://127.0.0.1:8081',
+    install_dir:'', password:'', password2:'', shortcut:true, _nameTouched:false, _dirTouched:false };
+}
+function today(){ var t=new Date(); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+function fr(x){ if(!x) return '–'; var p=x.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function $(s,r){ return (r||document).querySelector(s); }
+function slug(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[ .]+/g,'-').replace(/[^A-Za-z0-9_-]/g,''); }
+function dirFor(name){ return info.dir_template.replace(/\{nom\}/i, info.os==='windows' ? slug(name) : slug(name).toLowerCase()); }
+
+function api(path, body){
+  var opt = {headers:{'X-Setup-Token':TOKEN,'Content-Type':'application/json'}};
+  if (body !== undefined){ opt.method='POST'; opt.body=JSON.stringify(body); }
+  return fetch(path, opt).then(function(r){
+    return r.text().then(function(t){ var j; try{ j=JSON.parse(t); }catch(e){ j={error:t}; }
+      if(!r.ok){ var e=new Error(j.error||('Erreur '+r.status)); e.data=j; throw e; } return j; });
+  });
+}
+
+// ---------------------------------------------------------------- rendu
+function renderSteps(){
+  var ol = $('#steps');
+  ol.hidden = step < 0 || step >= STEPS.length;
+  ol.innerHTML = STEPS.map(function(s,i){
+    var cls = i===step ? 'on' : (i<step ? 'done' : '');
+    return '<li class="'+cls+'"><i>'+(i<step?'✓':(i+1))+'</i><span>'+s+'</span></li>';
+  }).join('');
+}
+function setFooter(back, next, nextLabel){
+  $('#footer').hidden = !back && !next;
+  $('#back').hidden = !back; $('#next').hidden = !next;
+  $('#next').textContent = nextLabel || 'Suivant →';
+  $('#next').disabled = false;
+}
+function go(n){ step = n; render(); window.scrollTo(0,0); }
+
+function render(){
+  renderSteps();
+  var c = $('#content');
+  if (step < 0) return renderHome(c);
+  [renderSoftware, renderContract, renderDisplay, renderExpiry, renderSecurity, renderRecap][step](c);
+  var f = c.querySelector('input:not([type=checkbox]):not([type=radio]),textarea'); if (f && step<5) f.focus();
+}
+
+function renderHome(c){
+  var list = info.installs;
+  c.innerHTML = '<h1>Bienvenue</h1><p class="lead">Cet assistant installe le module de rappel d\u2019expiration sur ce serveur ('+esc(info.hostname)+') en quelques étapes.</p>' +
+    (list.length ? '<h3 style="margin:0 0 10px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Modules installés</h3><div class="installs">' + list.map(function(x,i){
+      var days = !x.end_date ? '' : (x.level==='expired' ? '<span class="days expired">expiré</span>' : '<span class="days '+x.level+'">'+x.days_left+' j restants</span>');
+      return '<div class="inst"><div><h3>'+esc(x.name)+'</h3><p>'+esc(x.software_name||'')+' · fin le '+fr(x.end_date)+' · '+days+'</p><p>Service '+esc(x.status)+' · '+(x.enabled?'activé':'désactivé')+' · port '+x.port+'</p></div>' +
+        '<div class="acts"><button class="small" data-open="'+i+'">Administration</button><button class="small" data-edit="'+i+'">Modifier</button><button class="small danger" data-del="'+i+'">Désinstaller</button></div></div>';
+    }).join('') + '</div>' : '') +
+    '<button class="new" id="new">＋ Installer un nouveau module</button>' +
+    '<p class="hint" style="margin-top:18px">Un module par logiciel à surveiller. Chaque module peut porter le nom du logiciel (ex. « Kelio-Licence »).</p>';
+  setFooter(false, false);
+  $('#new').onclick = function(){ d = blank(); go(0); };
+  c.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ window.open(list[b.dataset.open].admin_url, '_blank'); }; });
+  c.querySelectorAll('[data-edit]').forEach(function(b){ b.onclick=function(){ edit(list[b.dataset.edit].name); }; });
+  c.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ uninstall(list[b.dataset.del].name); }; });
+}
+
+function edit(name){
+  api('/api/existing?name='+encodeURIComponent(name)).then(function(r){
+    var c = r.config; d = blank();
+    Object.assign(d, { existing:name, module_name:c.module_name, software_name:c.software_name, supplier_contact:c.supplier_contact,
+      enabled:c.enabled, start_date:c.start_date, end_date:c.end_date, warning_days:c.warning_days, message:c.message, expired_message:c.expired_message,
+      services:c.services||[], blocked_urls:c.blocked_urls||[], scripts:c.scripts||[], mode:c.upstream?'proxy':'script',
+      port: r.install.port, upstream:c.upstream||'http://127.0.0.1:8081', install_dir:r.install.dir, _nameTouched:true, _dirTouched:true, shortcut:true });
+    go(0);
+  }).catch(function(e){ alert(e.message); });
+}
+
+function uninstall(name){
+  var del = confirm('Désinstaller le module « '+name+' » ?\n\nOK = désinstaller ET supprimer ses fichiers\nAnnuler = ne rien faire');
+  if (!del) return;
+  api('/api/uninstall', {name:name, delete_files:true}).then(function(r){
+    alert('Module « '+name+' » désinstallé.\n' + r.steps.map(function(s){ return (s.ok?'✓ ':'✗ ')+s.label+(s.detail?' — '+s.detail:''); }).join('\n'));
+    reload();
+  }).catch(function(e){ alert(e.message); });
+}
+
+// ---- étape 1
+function renderSoftware(c){
+  c.innerHTML = '<h1>Logiciel à surveiller</h1><p class="lead">Quel logiciel ce module contrôle-t-il ?</p>' +
+    '<label for="software_name">Nom du logiciel</label><input type="text" id="software_name" maxlength="120" placeholder="ex. Kelio" value="'+esc(d.software_name)+'">' +
+    '<label for="module_name">Nom du module <span class="hint">— sert aussi de nom au service et au programme installé</span></label><input type="text" id="module_name" maxlength="60" placeholder="ex. Kelio-Licence" value="'+esc(d.module_name)+'">' +
+    '<label for="supplier_contact">Contact du fournisseur <span class="hint">(optionnel — affiché dans le message)</span></label><input type="text" id="supplier_contact" maxlength="200" placeholder="ex. support@editeur.ci — +225 07 00 00 00 00" value="'+esc(d.supplier_contact)+'">' +
+    '<div id="err"></div>';
+  setFooter(true, true);
+  $('#software_name').oninput = function(){ d.software_name=this.value; if(!d._nameTouched){ d.module_name = this.value.trim() ? slug(this.value.trim())+'-Licence' : ''; $('#module_name').value=d.module_name; } };
+  $('#module_name').oninput = function(){ d.module_name=this.value; d._nameTouched=true; };
+  $('#supplier_contact').oninput = function(){ d.supplier_contact=this.value; };
+}
+
+// ---- étape 2
+function renderContract(c){
+  c.innerHTML = '<h1>Contrat / licence</h1><p class="lead">Période couverte par la licence et le contrat de support technique.</p>' +
+    '<div class="row"><div><label for="start_date">Date de début</label><input type="date" id="start_date" value="'+esc(d.start_date)+'"></div>' +
+    '<div><label for="end_date">Date de fin <span class="hint">— expiration</span></label><input type="date" id="end_date" value="'+esc(d.end_date)+'"></div></div>' +
+    '<label for="warning_days">Début du décompte <span class="hint">— nombre de jours avant la fin (30 = un mois)</span></label><input type="number" id="warning_days" min="1" max="365" value="'+d.warning_days+'" style="max-width:140px">' +
+    '<div id="preview"></div>' +
+    '<details><summary>Personnaliser les messages</summary>' +
+    '<label for="message">Message de décompte <span class="hint">— {jours} {logiciel} {date_fin} {fournisseur}</span></label><textarea id="message">'+esc(d.message)+'</textarea>' +
+    '<label for="expired_message">Message après expiration</label><textarea id="expired_message">'+esc(d.expired_message)+'</textarea></details>' +
+    '<label class="toggle"><input type="checkbox" id="enabled" '+(d.enabled?'checked':'')+'><span><b>Activer le module dès l\u2019installation</b><span class="hint">Désactivé : aucun message, aucun blocage, aucune action. Réactivable à tout moment.</span></span></label>' +
+    '<div id="err"></div>';
+  setFooter(true, true);
+  ['start_date','end_date','message','expired_message'].forEach(function(k){ $('#'+k).oninput=function(){ d[k]=this.value; preview(); }; });
+  $('#warning_days').oninput=function(){ d.warning_days=parseInt(this.value,10)||30; preview(); };
+  $('#enabled').onchange=function(){ d.enabled=this.checked; };
+  preview();
+}
+function preview(){
+  var p = $('#preview'); if(!p) return;
+  if(!d.end_date){ p.innerHTML=''; return; }
+  var end = new Date(d.end_date+'T00:00:00'), now = new Date(); now.setHours(0,0,0,0);
+  var left = Math.round((end-now)/864e5);
+  var start = new Date(end); start.setDate(start.getDate()-d.warning_days);
+  var txt = left<=0 ? 'Cette date est déjà passée : le module considérera la licence comme expirée.' :
+    'Il reste <b>'+left+' jour'+(left>1?'s':'')+'</b>. Le message apparaîtra à partir du <b>'+start.toLocaleDateString('fr-FR')+'</b>, par exemple :';
+  var msg = d.message.replace('{jours}', Math.min(left, d.warning_days)).replace('{logiciel}', d.software_name).replace('{date_fin}', fr(d.end_date)).replace('{fournisseur}', d.supplier_contact);
+  p.innerHTML = '<p class="hint" style="margin:14px 0 6px;font-size:13.5px">'+txt+'</p>' + (left>0 ? '<div style="background:#ffd66b;color:#1f1300;border-radius:9px;padding:10px 14px;font-size:13.5px"><b style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;display:block;opacity:.8">'+esc(d.module_name)+' — '+esc(d.software_name)+'</b>'+esc(msg)+'</div>' : '');
+}
+
+// ---- étape 3
+function renderDisplay(c){
+  c.innerHTML = '<h1>Affichage du message</h1><p class="lead">Comment le message doit-il parvenir aux utilisateurs de l\u2019application ?</p>' +
+    '<div class="choice">' +
+    '<label><input type="radio" name="mode" value="proxy" '+(d.mode==='proxy'?'checked':'')+'><b>Automatique (recommandé)</b><span>Le module se place devant l\u2019application et ajoute le message à chaque page. Aucune modification de l\u2019application.</span></label>' +
+    '<label><input type="radio" name="mode" value="script" '+(d.mode==='script'?'checked':'')+'><b>Par une ligne de code</b><span>Vous ajoutez une ligne dans la page d\u2019accueil de l\u2019application (fournie à la fin).</span></label></div>' +
+    '<div id="proxy-fields"><label for="upstream">Adresse actuelle de l\u2019application sur ce serveur</label>' +
+    '<div class="adder"><input type="text" id="upstream" value="'+esc(d.upstream)+'" placeholder="http://127.0.0.1:8081"><button type="button" id="test">Tester</button></div><span id="up-res" class="hint"></span>' +
+    '<p class="hint" style="margin-top:6px">Les utilisateurs passeront par le port du module ci-dessous. Si vous voulez qu\u2019ils gardent la même adresse, déplacez d\u2019abord l\u2019application sur un autre port (ex. Tomcat 8080 → 8081).</p></div>' +
+    '<label for="port">Port du module <span class="hint">— adresse d\u2019accès : http://'+esc(info.hostname)+':<span id="pp">'+d.port+'</span></span></label>' +
+    '<div style="display:flex;align-items:center"><input type="number" id="port" min="1" max="65535" value="'+d.port+'" style="max-width:140px"><span id="port-res" class="check"></span></div>' +
+    '<div id="err"></div>';
+  setFooter(true, true);
+  function sync(){ $('#proxy-fields').hidden = d.mode!=='proxy'; }
+  c.querySelectorAll('input[name=mode]').forEach(function(r){ r.onchange=function(){ d.mode=this.value; if(d.mode==='script' && d.port===8080 && !d.existing){ d.port=8090; $('#port').value=8090; $('#pp').textContent=8090; checkPort(); } sync(); }; });
+  $('#upstream').oninput=function(){ d.upstream=this.value.trim(); $('#up-res').textContent=''; };
+  $('#test').onclick=function(){ var r=$('#up-res'); r.textContent='Test…'; api('/api/check',{upstream:d.upstream}).then(function(x){ r.className='check '+(x.upstream_ok?'ok':'bad'); r.textContent=(x.upstream_ok?'✓ ':'✗ ')+x.upstream_msg; }); };
+  var t; $('#port').oninput=function(){ d.port=parseInt(this.value,10)||0; $('#pp').textContent=d.port; clearTimeout(t); t=setTimeout(checkPort,300); };
+  sync(); checkPort();
+}
+function checkPort(){
+  var r=$('#port-res'); if(!r) return;
+  api('/api/check',{port:d.port, existing:d.existing}).then(function(x){ d._portOk = !!x.port_ok; r.className='check '+(x.port_ok?'ok':'bad'); r.textContent = x.port_ok ? '✓ port disponible' : '✗ port déjà utilisé'; });
+}
+
+// ---- étape 4
+function renderExpiry(c){
+  c.innerHTML = '<h1>À la date d\u2019expiration</h1><p class="lead">Ce que le module fait automatiquement le jour de la fin du contrat.</p>' +
+    '<label>Services à arrêter <span class="hint">— cochez les services de l\u2019application (ils seront arrêtés et désactivés)</span></label>' +
+    '<div class="box"><div class="tools"><input type="search" id="svc-q" placeholder="Rechercher un service (ex. tomcat)…"></div><div class="svc-list" id="svc-list"><p class="hint" style="padding:12px"><span class="spinner"></span>Chargement des services…</p></div></div>' +
+    '<div class="chips" id="svc-chips"></div>' +
+    '<label for="url-in">Adresses à bloquer <span class="hint">— chemin (/, /kelio) ou adresse complète. « / » = toute l\u2019application</span></label>' +
+    '<div class="adder"><input type="text" id="url-in" placeholder="/"><button type="button" id="url-add">Ajouter</button></div><div class="chips" id="url-chips"></div>' +
+    (d.mode==='script' ? '<p class="hint">En mode « ligne de code », le blocage prend la forme d\u2019un écran « accès suspendu » affiché par-dessus la page.</p>' : '') +
+    '<label for="scr-in">Commandes ou scripts à exécuter <span class="hint">(optionnel — .bat, .ps1, .sh)</span></label>' +
+    '<div class="adder"><input type="text" id="scr-in" placeholder="'+(info.os==='windows'?'C:\\Scripts\\fin-licence.bat':'/opt/scripts/fin-licence.sh')+'"><button type="button" id="scr-add">Ajouter</button></div><div class="chips" id="scr-chips"></div>' +
+    '<div id="err"></div>';
+  setFooter(true, true);
+  listEditor('url','blocked_urls'); listEditor('scr','scripts');
+  paintSvcChips();
+  $('#svc-q').oninput = paintServices;
+  if (services) paintServices(); else api('/api/services').then(function(s){ services = s||[]; paintServices(); }).catch(function(){ services=[]; paintServices(); });
+}
+function paintServices(){
+  var box = $('#svc-list'); if(!box) return;
+  var q = ($('#svc-q').value||'').toLowerCase().trim();
+  var list = services.filter(function(s){ return !q || (s.name+' '+s.display_name).toLowerCase().indexOf(q)>=0; });
+  list.sort(function(a,b){ var sa=d.services.indexOf(a.name)>=0, sb=d.services.indexOf(b.name)>=0; return sa===sb?0:(sa?-1:1); });
+  var extra = q && !services.some(function(s){ return s.name.toLowerCase()===q; }) ? '<div class="svc" style="cursor:default"><span class="n">Service introuvable ?</span><button type="button" class="small" id="svc-manual">Ajouter « '+esc($('#svc-q').value.trim())+' »</button></div>' : '';
+  box.innerHTML = (list.length ? list.slice(0,300).map(function(s){
+    var on = d.services.indexOf(s.name)>=0;
+    return '<label class="svc"><input type="checkbox" value="'+esc(s.name)+'" '+(on?'checked':'')+'><span class="n">'+esc(s.display_name||s.name)+'<small>'+esc(s.name)+'</small></span><span class="tag '+(s.status==='démarré'?'run':'')+'">'+esc(s.status)+'</span></label>';
+  }).join('') : (services.length ? '' : '<p class="hint" style="padding:12px">Liste des services indisponible : tapez le nom du service ci-dessus puis « Ajouter ».</p>')) + extra;
+  box.querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.onchange=function(){ toggleSvc(cb.value, cb.checked); }; });
+  var m = $('#svc-manual'); if (m) m.onclick=function(){ toggleSvc($('#svc-q').value.trim(), true); $('#svc-q').value=''; paintServices(); };
+}
+function toggleSvc(name, on){ var i=d.services.indexOf(name); if(on && i<0) d.services.push(name); if(!on && i>=0) d.services.splice(i,1); paintSvcChips(); }
+function paintSvcChips(){
+  var el=$('#svc-chips'); if(!el) return;
+  el.innerHTML = d.services.length ? d.services.map(function(s,i){ return '<span class="chip">'+esc(s)+'<button type="button" data-i="'+i+'" aria-label="Retirer">×</button></span>'; }).join('') : '<span class="hint">Aucun service sélectionné.</span>';
+  el.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ d.services.splice(+b.dataset.i,1); paintSvcChips(); paintServices(); }; });
+}
+function listEditor(p, key){
+  function paint(){ var el=$('#'+p+'-chips'); el.innerHTML = d[key].map(function(s,i){ return '<span class="chip">'+esc(s)+'<button type="button" data-i="'+i+'" aria-label="Retirer">×</button></span>'; }).join('');
+    el.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ d[key].splice(+b.dataset.i,1); paint(); }; }); }
+  function add(){ var v=$('#'+p+'-in').value.trim(); if(v && d[key].indexOf(v)<0) d[key].push(v); $('#'+p+'-in').value=''; paint(); }
+  $('#'+p+'-add').onclick=add; $('#'+p+'-in').onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } };
+  paint();
+}
+
+// ---- étape 5
+function renderSecurity(c){
+  if(!d._dirTouched) d.install_dir = dirFor(d.module_name);
+  c.innerHTML = '<h1>Sécurité et installation</h1><p class="lead">Mot de passe de la page d\u2019administration (pour modifier les dates plus tard).</p>' +
+    '<div class="row"><div><label for="password">Mot de passe administrateur '+(d.existing?'<span class="hint">(vide = inchangé)</span>':'')+'</label><input type="password" id="password" autocomplete="new-password" value="'+esc(d.password)+'"></div>' +
+    '<div><label for="password2">Confirmation</label><input type="password" id="password2" autocomplete="new-password" value="'+esc(d.password2)+'"></div></div>' +
+    '<p class="hint" style="margin-top:6px">8 caractères minimum. Identifiant : <b>admin</b></p>' +
+    '<label for="install_dir">Dossier d\u2019installation</label><input type="text" id="install_dir" value="'+esc(d.install_dir)+'" '+(d.existing?'disabled':'')+'>' +
+    (info.os==='windows' ? '<label class="toggle"><input type="checkbox" id="shortcut" '+(d.shortcut?'checked':'')+'><span><b>Raccourci sur le bureau</b><span class="hint">Vers la page d\u2019administration du module.</span></span></label>' : '') +
+    '<div id="err"></div>';
+  setFooter(true, true);
+  $('#password').oninput=function(){ d.password=this.value; }; $('#password2').oninput=function(){ d.password2=this.value; };
+  $('#install_dir').oninput=function(){ d.install_dir=this.value; d._dirTouched=true; };
+  var sc=$('#shortcut'); if(sc) sc.onchange=function(){ d.shortcut=this.checked; };
+}
+
+// ---- étape 6
+function renderRecap(c){
+  var rows = [
+    ['Logiciel', d.software_name], ['Nom du module', d.module_name], ['Contact fournisseur', d.supplier_contact||'–'],
+    ['Période', fr(d.start_date)+' → '+fr(d.end_date)], ['Début du décompte', d.warning_days+' jours avant la fin'],
+    ['État', d.enabled?'Activé':'Désactivé'],
+    ['Affichage', d.mode==='proxy' ? 'Automatique — application : '+d.upstream : 'Par une ligne de code'],
+    ['Adresse du module', 'http://'+info.hostname+':'+d.port],
+    ['Services à arrêter', d.services.join(', ')||'aucun'], ['Adresses à bloquer', d.blocked_urls.join(', ')||'aucune'], ['Scripts', d.scripts.join(', ')||'aucun'],
+    ['Dossier', d.install_dir]
+  ];
+  c.innerHTML = '<h1>Récapitulatif</h1><p class="lead">Vérifiez les informations puis lancez '+(d.existing?'la mise à jour':'l\u2019installation')+'.</p><dl class="recap">'+rows.map(function(r){ return '<dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd>'; }).join('')+'</dl><div id="err"></div>';
+  setFooter(true, true, d.existing ? 'Mettre à jour' : 'Installer');
+}
+
+// ---------------------------------------------------------------- validation par étape
+function validateStep(){
+  if (step===0){ if(!d.software_name.trim()) return 'Indiquez le nom du logiciel.'; if(!slug(d.module_name)) return 'Indiquez le nom du module (lettres, chiffres, tirets).'; }
+  if (step===1){ if(!d.end_date) return 'Indiquez la date de fin du contrat.'; if(d.start_date && d.end_date<d.start_date) return 'La date de fin doit être après la date de début.'; if(!(d.warning_days>0)) return 'Le début du décompte doit être un nombre de jours.'; }
+  if (step===2){ if(!(d.port>0 && d.port<65536)) return 'Port invalide.'; if(d._portOk===false) return 'Ce port est déjà utilisé : choisissez-en un autre (ex. 8090).'; if(d.mode==='proxy' && !/^https?:\/\/[^\/]+/.test(d.upstream)) return 'Indiquez l\u2019adresse de l\u2019application, ex. http://127.0.0.1:8081'; }
+  if (step===4){ if(!d.existing || d.password){ if(d.password.length<8) return 'Le mot de passe doit contenir au moins 8 caractères.'; if(d.password!==d.password2) return 'Les deux mots de passe ne correspondent pas.'; } if(!d.install_dir.trim()) return 'Indiquez le dossier d\u2019installation.'; }
+  return '';
+}
+function showErr(m){ var e=$('#err'); if(e) e.innerHTML = m ? '<div class="error">'+esc(m)+'</div>' : ''; }
+
+$('#back').onclick = function(){ if(step<=0){ reload(); } else go(step-1); };
+$('#next').onclick = function(){
+  var m = validateStep(); if(m){ showErr(m); return; }
+  if (step < STEPS.length-1) return go(step+1);
+  install();
+};
+
+function install(){
+  var btn=$('#next'); btn.disabled=true; $('#back').disabled=true; btn.innerHTML='<span class="spinner"></span>Installation…';
+  var body = Object.assign({}, d); delete body.password2;
+  api('/api/install', body).then(function(r){ showResult(r, null); }).catch(function(e){ showResult(e.data||{}, e.message); })
+    .finally(function(){ $('#back').disabled=false; });
+}
+function showResult(r, err){
+  step = STEPS.length; renderSteps();
+  var c=$('#content'), steps=(r.steps||[]);
+  var list = '<ul class="result">'+steps.map(function(s){ return '<li><span class="i '+(s.ok?'':'x')+'">'+(s.ok?'✓':'✕')+'</span><div>'+esc(s.label)+(s.detail?'<small>'+esc(s.detail)+'</small>':'')+'</div></li>'; }).join('')+'</ul>';
+  if (err){
+    c.innerHTML = '<h1>L\u2019installation n\u2019a pas abouti</h1><div class="error">'+esc(err)+'</div><p></p>'+list;
+    setFooter(true, false); $('#back').onclick=function(){ rebindBack(); go(STEPS.length-1); };
+    return;
+  }
+  c.innerHTML = '<div class="big-ok">✓</div><h1>Module « '+esc(r.name)+' » '+(d.existing?'mis à jour':'installé')+'</h1><p class="lead">Le module fonctionne et démarrera automatiquement avec le serveur.</p>' + list +
+    '<label>Page d\u2019administration <span class="hint">— identifiant admin</span></label><pre>'+esc(r.admin_url)+'</pre>' +
+    (r.mode==='script' ? '<label>Ligne à ajouter avant &lt;/body&gt; dans la page d\u2019accueil de l\u2019application</label><pre id="snip">'+esc(r.snippet)+'</pre><button class="small" id="copy" style="margin-top:8px">Copier</button>'
+      : '<label>Adresse à communiquer aux utilisateurs</label><pre>'+esc(r.admin_url.replace(/\/_licguard\/admin$/,'/'))+'</pre>');
+  setFooter(false, true, 'Terminer');
+  var cp=$('#copy'); if(cp) cp.onclick=function(){ navigator.clipboard.writeText(r.snippet).then(function(){ cp.textContent='Copié ✓'; }); };
+  $('#next').onclick = function(){ window.open(r.admin_url,'_blank'); finish(); };
+  $('#next').textContent = 'Ouvrir l\u2019administration et terminer';
+  var home=document.createElement('button'); home.type='button'; home.textContent='Retour à l\u2019accueil'; home.onclick=function(){ rebindNext(); reload(); };
+  $('#back').hidden=true; $('#footer').insertBefore(home, $('#footer .grow'));
+}
+function rebindBack(){ $('#back').onclick = function(){ if(step<=0){ reload(); } else go(step-1); }; }
+function rebindNext(){ $('#next').onclick = function(){ var m=validateStep(); if(m){ showErr(m); return; } if(step<STEPS.length-1) return go(step+1); install(); }; }
+function finish(){
+  api('/api/quit', {}).catch(function(){});
+  $('#content').innerHTML = '<div class="big-ok">✓</div><h1>Terminé</h1><p class="lead">Vous pouvez fermer cette page. Pour modifier le module plus tard, relancez le programme installé ou utilisez la page d\u2019administration.</p>';
+  setFooter(false,false);
+}
+function reload(){
+  var extra = $('#footer').querySelector('button:not(#back):not(#next)'); if(extra) extra.remove();
+  rebindBack(); rebindNext();
+  api('/api/info').then(function(i){ info=i; $('#ver').textContent='Assistant d\u2019installation · v'+i.version; step=-1; render(); })
+    .catch(function(e){ $('#content').innerHTML='<h1>Accès refusé</h1><p class="lead">'+esc(e.message)+'</p><p>Utilisez l\u2019adresse affichée dans la fenêtre de l\u2019assistant.</p>'; setFooter(false,false); });
+}
+reload();
+})();
+</script>
+</body>
+</html>
