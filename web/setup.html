@@ -108,7 +108,7 @@ pre{background:var(--soft);border:1px solid var(--line);border-radius:10px;paddi
   <aside>
     <div class="brand"><div class="logo">⏳</div><div><b>Rappel d'expiration</b><span id="ver">Assistant d'installation</span></div></div>
     <ol class="steps" id="steps"></ol>
-    <p class="side-note" id="side-note">Le module affiche un décompte aux utilisateurs de l'application avant la fin du contrat, puis arrête les services à l'échéance.</p>
+    <p class="side-note" id="side-note">Le module affiche un décompte aux utilisateurs de l'application avant la fin du contrat, puis peut arrêter les services à la date de fin.</p>
   </aside>
   <section class="main">
     <div class="content" id="content"></div>
@@ -124,13 +124,13 @@ pre{background:var(--soft);border:1px solid var(--line);border-radius:10px;paddi
 (function(){
 'use strict';
 var TOKEN = new URLSearchParams(location.search).get('t') || '';
-var STEPS = ['Logiciel','Contrat','Affichage','À l\u2019expiration','Sécurité','Récapitulatif'];
+var STEPS = ['Logiciel','Contrat','Affichage','À l\u2019arrêt','Sécurité','Récapitulatif'];
 var info = null, services = null, step = -1; // -1 = accueil
 var d = {}; // données saisies
 
 function blank(){
   return { existing:'', module_name:'', software_name:'', supplier_contact:'', enabled:true,
-    start_date: today(), end_date:'', warning_days:30, message: info.message, expired_message: info.expired,
+    start_date: today(), end_date:'', stop_on_end:false, warning_days:30, message: info.message, expired_message: info.expired,
     services:[], blocked_urls:['/'], scripts:[], mode:'proxy', port:8080, upstream:'http://127.0.0.1:8081',
     install_dir:'', password:'', password2:'', shortcut:true, _nameTouched:false, _dirTouched:false };
 }
@@ -196,7 +196,7 @@ function edit(name){
   api('/api/existing?name='+encodeURIComponent(name)).then(function(r){
     var c = r.config; d = blank();
     Object.assign(d, { existing:name, module_name:c.module_name, software_name:c.software_name, supplier_contact:c.supplier_contact,
-      enabled:c.enabled, start_date:c.start_date, end_date:c.end_date, warning_days:c.warning_days, message:c.message, expired_message:c.expired_message,
+      enabled:c.enabled, start_date:c.start_date, end_date:c.end_date, stop_on_end:!!c.stop_on_end, warning_days:c.warning_days, message:c.message, expired_message:c.expired_message,
       services:c.services||[], blocked_urls:c.blocked_urls||[], scripts:c.scripts||[], mode:c.upstream?'proxy':'script',
       port: r.install.port, upstream:c.upstream||'http://127.0.0.1:8081', install_dir:r.install.dir, _nameTouched:true, _dirTouched:true, shortcut:true });
     go(0);
@@ -229,7 +229,8 @@ function renderSoftware(c){
 function renderContract(c){
   c.innerHTML = '<h1>Contrat / licence</h1><p class="lead">Période couverte par la licence et le contrat de support technique.</p>' +
     '<div class="row"><div><label for="start_date">Date de début</label><input type="date" id="start_date" value="'+esc(d.start_date)+'"></div>' +
-    '<div><label for="end_date">Date de fin <span class="hint">— expiration</span></label><input type="date" id="end_date" value="'+esc(d.end_date)+'"></div></div>' +
+    '<div><label for="end_date">Date de fin <span class="hint">— expire à 00:00</span></label><input type="date" id="end_date" value="'+esc(d.end_date)+'"></div></div>' +
+    '<label class="toggle"><input type="checkbox" id="stop_on_end" '+(d.stop_on_end?'checked':'')+'><span><b>Arrêter l’application à la date de fin</b><span class="hint">Coché : à 00:00 ce jour-là, services arrêtés, adresses bloquées, scripts exécutés. Décoché : message « expiré » seul.</span></span></label>' +
     '<label for="warning_days">Début du décompte <span class="hint">— nombre de jours avant la fin (30 = un mois)</span></label><input type="number" id="warning_days" min="1" max="365" value="'+d.warning_days+'" style="max-width:140px">' +
     '<div id="preview"></div>' +
     '<details><summary>Personnaliser les messages</summary>' +
@@ -239,6 +240,7 @@ function renderContract(c){
     '<div id="err"></div>';
   setFooter(true, true);
   ['start_date','end_date','message','expired_message'].forEach(function(k){ $('#'+k).oninput=function(){ d[k]=this.value; preview(); }; });
+  $('#stop_on_end').onchange=function(){ d.stop_on_end=this.checked; };
   $('#warning_days').oninput=function(){ d.warning_days=parseInt(this.value,10)||30; preview(); };
   $('#enabled').onchange=function(){ d.enabled=this.checked; };
   preview();
@@ -282,7 +284,7 @@ function checkPort(){
 
 // ---- étape 4
 function renderExpiry(c){
-  c.innerHTML = '<h1>À la date d\u2019expiration</h1><p class="lead">Ce que le module fait automatiquement le jour de la fin du contrat.</p>' +
+  c.innerHTML = '<h1>À la date d\u2019arr\u00eat</h1><p class="lead">Ce que le module fait \u00e0 la date d\u2019arr\u00eat choisie \u00e0 l\u2019\u00e9tape pr\u00e9c\u00e9dente. Sans date d\u2019arr\u00eat, rien n\u2019est arr\u00eat\u00e9 : la fin du contrat n\u2019affiche qu\u2019un message.</p>' +
     '<label>Services à arrêter <span class="hint">— cochez les services de l\u2019application (ils seront arrêtés et désactivés)</span></label>' +
     '<div class="box"><div class="tools"><input type="search" id="svc-q" placeholder="Rechercher un service (ex. tomcat)…"></div><div class="svc-list" id="svc-list"><p class="hint" style="padding:12px"><span class="spinner"></span>Chargement des services…</p></div></div>' +
     '<div class="chips" id="svc-chips"></div>' +
@@ -345,7 +347,7 @@ function renderSecurity(c){
 function renderRecap(c){
   var rows = [
     ['Logiciel', d.software_name], ['Nom du module', d.module_name], ['Contact fournisseur', d.supplier_contact||'–'],
-    ['Période', fr(d.start_date)+' → '+fr(d.end_date)], ['Début du décompte', d.warning_days+' jours avant la fin'],
+    ['Période', fr(d.start_date)+' → '+fr(d.end_date)], ['Arrêt complet', d.stop_on_end ? fr(d.end_date)+' à 00:00' : 'aucun (pas d’arrêt automatique)'], ['Début du décompte', d.warning_days+' jours avant la fin'],
     ['État', d.enabled?'Activé':'Désactivé'],
     ['Affichage', d.mode==='proxy' ? 'Automatique — application : '+d.upstream : 'Par une ligne de code'],
     ['Adresse du module', 'http://'+info.hostname+':'+d.port],

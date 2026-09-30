@@ -72,7 +72,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 
   <form class="card" id="f" autocomplete="off">
     <h2>Paramètres</h2>
-    <label class="switch"><input type="checkbox" id="enabled"> <span><b>Module activé</b><br><span class="hint">Désactivé : aucun bandeau, aucun blocage, aucune action à l'expiration.</span></span></label>
+    <label class="switch"><input type="checkbox" id="enabled"> <span><b>Module activé</b><br><span class="hint">Désactivé : aucun bandeau, aucun blocage, aucune action à la date d'arrêt.</span></span></label>
 
     <fieldset><legend>Identification</legend>
       <div class="row">
@@ -86,8 +86,9 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
     <fieldset><legend>Contrat / licence</legend>
       <div class="row">
         <div><label for="start_date">Date de début</label><input type="date" id="start_date"></div>
-        <div><label for="end_date">Date de fin <span class="hint">(expiration — arrêt à 00:00 ce jour-là)</span></label><input type="date" id="end_date"></div>
+        <div><label for="end_date">Date de fin <span class="hint">(expiration à 00:00 ce jour-là)</span></label><input type="date" id="end_date"></div>
       </div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="stop_on_end"> Arrêter l'application à la date de fin <span class="hint">(services, adresses bloquées, scripts — décoché : message « expiré » seul)</span></label>
       <label for="warning_days">Début du décompte <span class="hint">(jours avant l'expiration — 30 = un mois)</span></label>
       <input type="number" id="warning_days" min="1" max="365" style="max-width:140px">
       <label for="message">Message de décompte <span class="hint">— variables : {jours} {logiciel} {date_fin} {fournisseur}</span></label>
@@ -96,7 +97,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       <textarea id="expired_message" style="min-height:56px;font-family:inherit"></textarea>
     </fieldset>
 
-    <fieldset><legend>À la date d'expiration</legend>
+    <fieldset><legend>À la date d'arrêt</legend>
       <label for="services">Services à arrêter <span class="hint">— un nom de service par ligne (ex. Tomcat9, apache2). Arrêtés puis désactivés.</span></label>
       <textarea id="services" placeholder="Tomcat9"></textarea>
       <label for="blocked_urls">URL à bloquer <span class="hint">— une par ligne : chemin (/app) ou URL complète (http://serveur:8080/app). « / » bloque tout.</span></label>
@@ -148,8 +149,8 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
     $('progtxt').textContent = s.configured && c.start_date ? (s.progress + ' % de la période écoulée') : '';
     $('s-soft').textContent = c.software_name || '–';
     $('s-period').textContent = fmt(c.start_date) + ' → ' + fmt(c.end_date);
-    $('s-stop').textContent = s.expires_at ? new Date(s.expires_at).toLocaleString('fr-FR') : '–';
-    $('s-actions').textContent = c.actions_done_at ? ('exécutées le ' + c.actions_done_at) : (s.expired ? 'en attente' : 'non déclenchées');
+    $('s-stop').textContent = c.stop_on_end ? fmt(c.end_date) + ' à 00:00' : 'aucun (pas d’arrêt automatique)';
+    $('s-actions').textContent = c.actions_done_at ? ('exécutées le ' + c.actions_done_at) : (s.stopped ? 'en attente' : 'non déclenchées');
     var pv = $('preview');
     if (s.show) { pv.hidden = false; pv.className = 'preview ' + s.level; pv.textContent = 'Aperçu : ' + s.message; }
     else if (c.enabled && s.configured) { pv.hidden = false; pv.className = 'preview'; pv.style.opacity = .7; pv.textContent = 'Le bandeau apparaîtra ' + c.warning_days + ' jours avant l\u2019expiration.'; }
@@ -168,6 +169,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       fields.forEach(function(k){ $(k).value = c[k] == null ? '' : c[k]; });
       lists.forEach(function(k){ $(k).value = (c[k]||[]).join('\n'); });
       $('enabled').checked = !!c.enabled;
+      $('stop_on_end').checked = !!c.stop_on_end;
       paint(c);
     }).catch(function(e){ msg(e.message, true); });
     loadLog();
@@ -176,7 +178,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 
   $('f').addEventListener('submit', function(e){
     e.preventDefault();
-    var body = { enabled: $('enabled').checked, new_password: $('new_password').value };
+    var body = { enabled: $('enabled').checked, stop_on_end: $('stop_on_end').checked, new_password: $('new_password').value };
     fields.forEach(function(k){ body[k] = $(k).value; });
     body.warning_days = parseInt(body.warning_days, 10) || 30;
     lists.forEach(function(k){ body[k] = $(k).value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean); });

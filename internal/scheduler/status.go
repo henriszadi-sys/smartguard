@@ -19,10 +19,12 @@ type Status struct {
 	Configured   bool   `json:"configured"`
 	StartDate    string `json:"start_date"`
 	EndDate      string `json:"end_date"`
-	DaysLeft     int    `json:"days_left"` // jours restants avant la date de fin
-	Show         bool   `json:"show"`      // afficher le bandeau
-	Expired      bool   `json:"expired"`
-	Level        string `json:"level"` // ok | warning | critical | expired
+	StopOnEnd    bool   `json:"stop_on_end"` // arrêt complet prévu à la date de fin
+	DaysLeft     int    `json:"days_left"`   // jours restants avant la date de fin
+	Show         bool   `json:"show"`        // afficher le bandeau
+	Expired      bool   `json:"expired"`     // date de fin atteinte
+	Stopped      bool   `json:"stopped"`     // date de fin atteinte et arrêt activé : actions et blocage
+	Level        string `json:"level"`       // ok | warning | critical | expired
 	Message      string `json:"message"`
 	Contact      string `json:"contact"`
 	Progress     int    `json:"progress"` // % du contrat écoulé
@@ -44,7 +46,7 @@ func frDate(t time.Time) string { return t.Format("02/01/2006") }
 // ComputeStatus calcule l'état du décompte à l'instant now.
 func ComputeStatus(c config.Config, st config.State, now time.Time) Status {
 	s := Status{ModuleName: c.ModuleName, SoftwareName: c.SoftwareName, Enabled: c.Enabled,
-		StartDate: c.StartDate, EndDate: c.EndDate, Contact: c.SupplierContact, Level: "ok"}
+		StartDate: c.StartDate, EndDate: c.EndDate, StopOnEnd: c.StopOnEnd, Contact: c.SupplierContact, Level: "ok"}
 	end, err := time.ParseInLocation(config.DateLayout, c.EndDate, time.Local)
 	if err != nil {
 		return s
@@ -56,6 +58,8 @@ func ComputeStatus(c config.Config, st config.State, now time.Time) Status {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	s.DaysLeft = int(math.Round(stop.Sub(today).Hours() / 24))
 	s.Expired = !now.Before(stop)
+	// L'arrêt complet a lieu à 00:00 à la date de fin, uniquement si l'option d'arrêt est activée.
+	s.Stopped = s.Expired && c.StopOnEnd
 
 	if start, err := time.ParseInLocation(config.DateLayout, c.StartDate, time.Local); err == nil && stop.After(start) {
 		p := now.Sub(start).Seconds() / stop.Sub(start).Seconds() * 100

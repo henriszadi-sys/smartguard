@@ -22,15 +22,17 @@ const DateLayout = "2006-01-02"
 
 // Config : paramètres saisis par l'administrateur.
 type Config struct {
-	ModuleName      string   `json:"module_name"`      // nom affiché du module (renommable)
-	ServiceName     string   `json:"service_name"`     // nom du service système du module
-	SoftwareName    string   `json:"software_name"`    // logiciel contrôlé
-	SupplierContact string   `json:"supplier_contact"` // coordonnées du fournisseur (optionnel)
-	Enabled         bool     `json:"enabled"`          // activer / désactiver le module
-	StartDate       string   `json:"start_date"`       // AAAA-MM-JJ
-	EndDate         string   `json:"end_date"`         // AAAA-MM-JJ (date d'expiration)
-	WarningDays     int      `json:"warning_days"`     // début du décompte (30 = un mois)
-	Message         string   `json:"message"`          // {jours} {logiciel} {date_fin}
+	ModuleName      string   `json:"module_name"`         // nom affiché du module (renommable)
+	ServiceName     string   `json:"service_name"`        // nom du service système du module
+	SoftwareName    string   `json:"software_name"`       // logiciel contrôlé
+	SupplierContact string   `json:"supplier_contact"`    // coordonnées du fournisseur (optionnel)
+	Enabled         bool     `json:"enabled"`             // activer / désactiver le module
+	StartDate       string   `json:"start_date"`          // AAAA-MM-JJ
+	EndDate         string   `json:"end_date"`            // AAAA-MM-JJ (fin de contrat ; date d'arrêt si StopOnEnd)
+	StopOnEnd       bool     `json:"stop_on_end"`         // exécuter l'arrêt complet à 00:00 à la date de fin
+	StopDate        string   `json:"stop_date,omitempty"` // ancien format : reprise dans EndDate + StopOnEnd puis vidé
+	WarningDays     int      `json:"warning_days"`        // début du décompte (30 = un mois)
+	Message         string   `json:"message"`             // {jours} {logiciel} {date_fin}
 	ExpiredMessage  string   `json:"expired_message"`
 	Services        []string `json:"services"`     // services système à arrêter
 	BlockedURLs     []string `json:"blocked_urls"` // URL / préfixes à bloquer
@@ -50,7 +52,7 @@ type Config struct {
 type State struct {
 	LastSeen      time.Time `json:"last_seen"`       // anti-retour d'horloge
 	ActionsDoneAt time.Time `json:"actions_done_at"` // zéro = actions pas encore exécutées
-	ActionsFor    string    `json:"actions_for"`     // date de fin concernée
+	ActionsFor    string    `json:"actions_for"`     // date d'arrêt concernée
 }
 
 const DefaultMessage = "L'assistance et le support technique à votre logiciel prendra fin dans {jours} jours, veuillez contacter le fournisseur"
@@ -106,6 +108,10 @@ func NewStore(cfgPath string) (*Store, error) {
 
 func (s *Store) normalize() {
 	c := &s.cfg
+	// Migration : l'ancienne date d'arrêt devient la date de fin, avec arrêt activé.
+	if c.StopDate != "" {
+		c.EndDate, c.StopOnEnd, c.StopDate = c.StopDate, true, ""
+	}
 	if c.WarningDays <= 0 {
 		c.WarningDays = 30
 	}
@@ -186,6 +192,9 @@ func Validate(c Config) error {
 		if _, err := time.ParseInLocation(DateLayout, c.EndDate, time.Local); err != nil {
 			return fmt.Errorf("date de fin invalide (format AAAA-MM-JJ)")
 		}
+	}
+	if c.StopOnEnd && c.EndDate == "" {
+		return fmt.Errorf("renseignez la date de fin pour activer l'arrêt à cette date")
 	}
 	if c.StartDate != "" && c.EndDate != "" && c.EndDate < c.StartDate {
 		return fmt.Errorf("la date de fin doit être postérieure à la date de début")

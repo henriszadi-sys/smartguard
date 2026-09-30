@@ -103,9 +103,9 @@ func runScriptOnce(cmdline string) (string, error) {
 // Logf : fonction de journalisation utilisée par les actions.
 type Logf func(format string, args ...any)
 
-// Enforce exécute les actions d'expiration (appelée une seule fois par échéance).
+// Enforce exécute les actions d'arrêt (appelée une seule fois par date d'arrêt).
 func Enforce(c config.Config, logf Logf) {
-	logf("EXPIRATION atteinte pour « %s » (fin : %s) — exécution des actions", c.SoftwareName, c.EndDate)
+	logf("ARRÊT PLANIFIÉ atteint pour « %s » (fin de contrat et arrêt : %s) — exécution des actions", c.SoftwareName, c.EndDate)
 	for _, s := range c.Services {
 		for _, line := range StopService(s) {
 			logf("  service %s : %s", s, line)

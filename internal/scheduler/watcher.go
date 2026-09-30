@@ -7,11 +7,11 @@ import (
 )
 
 // Watcher vérifie périodiquement l'échéance et exécute une seule fois les
-// actions d'expiration, y compris celles manquées pendant un arrêt du service.
+// actions d'arrêt, y compris celles manquées pendant un arrêt du service.
 type Watcher struct {
 	Store    *config.Store
 	Now      func() time.Time      // horloge injectable (time.Now par défaut)
-	Expire   func(c config.Config) // actions à l'échéance
+	Expire   func(c config.Config) // actions à la date d'arrêt
 	Interval time.Duration         // 30 s par défaut
 }
 
@@ -54,7 +54,7 @@ func (w *Watcher) Tick() {
 		return
 	}
 	s := ComputeStatus(c, st, now)
-	if s.Expired && (st.ActionsDoneAt.IsZero() || st.ActionsFor != c.EndDate) {
+	if s.Stopped && (st.ActionsDoneAt.IsZero() || st.ActionsFor != c.EndDate) {
 		w.Store.UpdateState(func(x *config.State) { x.ActionsDoneAt = now; x.ActionsFor = c.EndDate })
 		if w.Expire != nil {
 			w.Expire(c)

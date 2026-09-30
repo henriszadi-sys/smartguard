@@ -148,3 +148,22 @@ func TestIsBlocked(t *testing.T) {
 		}
 	}
 }
+
+func TestStopOnEndFollowsContractEnd(t *testing.T) {
+	c := cfg("2026-10-05")
+	if s := ComputeStatus(c, config.State{}, at("2026-12-01 10:00:00")); !s.Expired || s.Stopped {
+		t.Fatalf("sans option d'arrêt : %+v", s)
+	}
+	c.StopOnEnd = true
+	if s := ComputeStatus(c, config.State{}, at("2026-10-04 23:59:59")); s.Expired || s.Stopped {
+		t.Fatalf("veille de la fin : %+v", s)
+	}
+	if s := ComputeStatus(c, config.State{}, at("2026-10-05 00:00:00")); !s.Expired || !s.Stopped {
+		t.Fatalf("00:00 le jour de la fin : %+v", s)
+	}
+	// Le recul d'horloge ne repousse pas l'arrêt.
+	seen := config.State{LastSeen: at("2026-10-05 00:10:00")}
+	if s := ComputeStatus(c, seen, at("2026-09-25 08:00:00")); !s.Stopped {
+		t.Fatalf("recul d'horloge : arrêt repoussé : %+v", s)
+	}
+}

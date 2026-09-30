@@ -59,7 +59,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		st := s.status(c)
-		if c.Enabled && st.Expired && scheduler.IsBlocked(c, r.Host, r.URL.Path) {
+		if c.Enabled && st.Stopped && scheduler.IsBlocked(c, r.Host, r.URL.Path) {
 			proxy.RenderExpired(w, st)
 			return
 		}
@@ -87,7 +87,7 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Cache-Control", "no-store")
 		st := s.status(c)
-		if st.Expired && c.Enabled {
+		if st.Stopped && c.Enabled {
 			if p := r.URL.Query().Get("page"); p != "" {
 				if pu, err := url.Parse(p); err == nil {
 					st.Blocked = scheduler.IsBlocked(c, pu.Host, pu.Path)
@@ -169,7 +169,7 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			x.SoftwareName = strings.TrimSpace(in.SoftwareName)
 			x.SupplierContact = strings.TrimSpace(in.SupplierContact)
 			x.Enabled = in.Enabled
-			x.StartDate, x.EndDate = in.StartDate, in.EndDate
+			x.StartDate, x.EndDate, x.StopOnEnd = in.StartDate, in.EndDate, in.StopOnEnd
 			x.WarningDays = in.WarningDays
 			x.Message, x.ExpiredMessage = in.Message, in.ExpiredMessage
 			x.Services, x.BlockedURLs, x.Scripts = in.Services, in.BlockedURLs, in.Scripts
@@ -195,8 +195,8 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			return
 		}
 		after := s.Store.Config()
-		s.Log.Printf("Configuration modifiée par %s : logiciel « %s », %s → %s, module %s",
-			clientIP(r), after.SoftwareName, after.StartDate, after.EndDate, map[bool]string{true: "ACTIVÉ", false: "désactivé"}[after.Enabled])
+		s.Log.Printf("Configuration modifiée par %s : logiciel « %s », %s → %s, arrêt à la date de fin : %v, module %s",
+			clientIP(r), after.SoftwareName, after.StartDate, after.EndDate, after.StopOnEnd, map[bool]string{true: "ACTIVÉ", false: "désactivé"}[after.Enabled])
 		if before.Enabled != after.Enabled {
 			s.Log.Printf("Module %s", map[bool]string{true: "activé", false: "désactivé"}[after.Enabled])
 		}

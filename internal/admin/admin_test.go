@@ -26,6 +26,7 @@ func newServer(t *testing.T) *Server {
 	}
 	if err := st.UpdateConfig(func(c *config.Config) error {
 		c.Enabled, c.StartDate, c.EndDate, c.AdminPasswordHash = true, "2026-01-01", "2026-10-05", h
+		c.StopOnEnd = true
 		c.BlockedURLs = []string{"/"}
 		return nil
 	}); err != nil {
@@ -104,12 +105,22 @@ func TestExpiredPageUsesInjectedClock(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
 	if w.Code == http.StatusServiceUnavailable {
-		t.Fatal("page bloquée avant l'échéance")
+		t.Fatal("page bloquée avant la fin du contrat")
 	}
+	// Avec l'option d'arrêt, la page est bloquée à 00:00 le jour de la date de fin.
 	s.Now = func() time.Time { return time.Date(2026, 10, 5, 0, 0, 0, 0, time.Local) }
 	w = httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
 	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "</html>") {
-		t.Fatalf("page « accès suspendu » attendue à l'échéance : code %d", w.Code)
+		t.Fatalf("page « accès suspendu » attendue à la date de fin : code %d", w.Code)
+	}
+	// Sans l'option d'arrêt, la fin du contrat ne bloque rien.
+	if err := s.Store.UpdateConfig(func(c *config.Config) error { c.StopOnEnd = false; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	if w.Code == http.StatusServiceUnavailable {
+		t.Fatal("page bloquée à la fin du contrat sans option d'arrêt")
 	}
 }

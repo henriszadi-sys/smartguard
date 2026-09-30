@@ -4,7 +4,7 @@
 
 | Version | Date | Base |
 |---|---|---|
-| 1.2 | 30 septembre 2026 | LISEZMOI.md et demandes complémentaires (v1.1 du 28 septembre 2026, projet renommé de LicGuard en SmartGUARD) |
+| 1.4 | 30 septembre 2026 | LISEZMOI.md et demandes complémentaires (v1.1 du 28 septembre 2026, projet renommé de LicGuard en SmartGUARD) ; date de fin = date d'arrêt |
 
 *Document de spécification fonctionnelle*
 
@@ -12,7 +12,7 @@
 
 ## 1. Objet et contexte
 
-SmartGUARD est un module installé sur un serveur pour suivre la date de fin d'un contrat lié à un logiciel. Il avertit les utilisateurs à l'approche de cette date puis peut, à l'échéance ou à une date d'arrêt planifiée, exécuter des actions définies par un technicien : arrêt de l'application ou de services, blocage d'adresses et exécution de scripts.
+SmartGUARD est un module installé sur un serveur pour suivre la date de fin d'un contrat lié à un logiciel. Il avertit les utilisateurs à l'approche de cette date puis peut, à cette date de fin, exécuter des actions définies par un technicien : arrêt de l'application ou de services, blocage d'adresses et exécution de scripts.
 
 Le produit comprend un assistant d'installation et de configuration, un service fonctionnant en arrière-plan, une interface web d'administration et un mécanisme de licence par poste.
 
@@ -27,7 +27,7 @@ Le produit comprend un assistant d'installation et de configuration, un service 
 
 **Administrateur du serveur** — Installe, modifie, désinstalle et diagnostique SmartGUARD. Il choisit le mot de passe d'administration et configure les actions, les ports et la licence ou les postes autorisés.
 
-**Technicien / administrateur SmartGUARD** — Gère les dates de contrat et d'arrêt planifié, l'activation, les actions à exécuter et la réactivation des services après renouvellement.
+**Technicien / administrateur SmartGUARD** — Gère les dates de contrat, l'option d'arrêt à la date de fin, l'activation, les actions à exécuter et la réactivation des services après renouvellement.
 
 **Utilisateur de l'application** — Utilise l'application et voit, à l'approche de l'échéance, le message de rappel configuré.
 
@@ -47,7 +47,7 @@ Le produit comprend un assistant d'installation et de configuration, un service 
 L'assistant guide l'administrateur en six étapes :
 
 1. **Logiciel** : nom du logiciel, nom du module (proposé automatiquement) et contact du fournisseur.
-2. **Contrat** : dates de début et de fin, délai de rappel (30 jours par défaut), activation et aperçu du message.
+2. **Contrat** : dates de début et de fin, option d'arrêt à la date de fin, délai de rappel (30 jours par défaut), activation et aperçu du message.
 3. **Affichage** : mode automatique avec bouton de test, ou intégration par ligne de code.
 4. **À l'échéance** : services à arrêter, adresses à bloquer et scripts à exécuter.
 5. **Sécurité** : mot de passe administrateur, dossier d'installation et raccourci éventuel.
@@ -69,19 +69,22 @@ Le rappel commence au nombre de jours défini avant la date de fin. Le texte par
 - **Automatique** : SmartGUARD se place devant l'application et ajoute le message à ses pages. Le port est configurable ; si SmartGUARD reprend le port courant, l'application doit être déplacée vers un autre port.
 - **Ligne de code** : l'application intègre le code fourni par l'assistant pour afficher le message.
 
-## 8. Expiration et arrêt planifié
+## 8. Expiration et arrêt
 
-### Actions à la fin du contrat
+### Fin du contrat = date d'arrêt
 
-La fin du contrat survient à 00:00 le jour de la date de fin. À ce moment, le module exécute les actions de fin de contrat configurées : arrêt et désactivation des services sélectionnés, blocage des adresses avec affichage d'une page « accès suspendu » et exécution des scripts sélectionnés.
+Il n'existe qu'une seule date : la date de fin du contrat ou de la licence. Elle est aussi la date d'arrêt de l'application. Elle est saisissable dans l'assistant et modifiable dans l'administration.
 
-### Date d'arrêt planifiée (optionnelle)
+La fin survient à 00:00 le jour de la date de fin. À ce moment, le message de rappel passe à l'état « expiré ».
 
-Le technicien peut définir une date d'arrêt de l'application, distincte de la date de fin du contrat. Il choisit si l'arrêt concerne l'application, les services liés, ou les deux. Cette date est saisissable dans l'assistant et modifiable dans l'administration.
+### Option « Arrêter l'application à la date de fin »
 
-- À la date définie, SmartGUARD arrête les composants sélectionnés et consigne l'exécution ainsi que toute erreur dans son journal.
-- La date d'arrêt planifiée et les actions de fin de contrat sont configurables séparément.
-- Sans date d'arrêt planifiée, cette option ne déclenche aucune action.
+Case à cocher, décochée tant que le technicien ne l'a pas activée.
+
+- **Cochée** : à 00:00 le jour de la date de fin, SmartGUARD exécute une seule fois les actions configurées (arrêt et désactivation des services sélectionnés, blocage des adresses avec page « accès suspendu », exécution des scripts) et consigne l'exécution ainsi que toute erreur dans son journal.
+- **Décochée** : seul le message passe à « expiré » ; aucune action n'est jamais déclenchée automatiquement.
+- Le recul de l'horloge du serveur ne repousse pas l'arrêt.
+- Migration : dans une configuration issue d'une version antérieure, l'ancienne date d'arrêt (`stop_date`) est reprise comme date de fin et l'option est cochée.
 
 ## 9. Renouvellement et réactivation
 
@@ -91,7 +94,7 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 
 - Connexion à l'interface web avec l'identifiant `admin` et le mot de passe défini à l'installation.
 - Consultation et modification des dates, de l'activation, des actions configurées et du journal.
-- Affichage de la date d'arrêt planifiée et de l'état des licences/postes associés.
+- Affichage de la date de fin, de l'option d'arrêt et de l'état des licences/postes associés.
 - Depuis l'écran d'accueil : modifier les paramètres, ouvrir l'administration ou désinstaller le module.
 - La modification reprend les valeurs existantes ; renommer un module renomme également le service correspondant.
 - La désinstallation supprime le service, la règle de pare-feu et les fichiers du module.
@@ -108,7 +111,7 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 ## 12. Journaux et diagnostic
 
 - `installation.log` : détail des installations et mises à jour.
-- `config.log` : démarrage, erreurs et actions à l'expiration ou à l'arrêt planifié.
+- `config.log` : démarrage, erreurs et actions à l'expiration ou à l'arrêt.
 - Diagnostic depuis l'assistant : configuration, port, application, état du service et journal d'événements Windows.
 - Commande manuelle de diagnostic Windows : exécuter le programme installé avec le paramètre de configuration puis la commande `check`, en invite administrateur.
 - Commandes technicien optionnelles : consulter l'état, changer le mot de passe et lancer un diagnostic complet.
@@ -128,8 +131,8 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 - Chaque poste autorisé possède une installation unique et une licence individuelle ; une licence ne peut pas être activée simultanément sur deux postes.
 - Le rappel apparaît au délai configuré, indique les jours restants et respecte les couleurs définies.
 - Les modes automatique et ligne de code fonctionnent ; le mode automatique propose un test.
-- À l'échéance, les actions configurées sont exécutées et journalisées.
-- À la date d'arrêt planifiée, l'application et/ou les services sélectionnés sont arrêtés et l'action est journalisée.
+- À la fin du contrat, le message passe à « expiré » ; sans l'option d'arrêt, aucune action n'est exécutée.
+- À la date de fin, si l'option d'arrêt est cochée, les actions configurées (services, adresses bloquées, scripts) sont exécutées une seule fois et journalisées.
 - Le renouvellement et la réactivation des services sont possibles depuis l'administration.
 - Plusieurs modules coexistent sur un serveur avec des ports distincts.
 - Les protections de connexion et les diagnostics prévus sont disponibles.
@@ -138,13 +141,13 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 
 - Le mécanisme de blocage des adresses et d'affichage de la page « accès suspendu ».
 - La validation, les droits d'exécution et les tentatives en cas d'échec des scripts.
-- La gestion d'un redémarrage serveur autour de l'échéance ou de l'arrêt planifié.
+- La gestion d'un redémarrage serveur autour de l'échéance ou de l'arrêt.
 - Les sauvegardes, migrations et restauration des configurations.
 - La prise en charge de HTTPS pour l'administration.
 - Les versions supportées des systèmes et navigateurs, ainsi que les ressources minimales.
 - Le fuseau horaire et le traitement des changements d'heure dans le calcul des échéances.
 - La définition exacte d'un « poste » (poste client, terminal virtuel ou poste serveur), le processus d'activation, les transferts, les renouvellements et le mode hors ligne de la licence.
-- La relation entre date de fin de contrat et date d'arrêt planifiée si la date d'arrêt est antérieure ou postérieure à la fin du contrat.
+- ~~La relation entre date de fin de contrat et date d'arrêt planifiée~~ : décidé en v1.4, une seule date ; l'arrêt à cette date est une option.
 
 ---
 
@@ -154,3 +157,5 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 |---|---|---|
 | 1.1 | 28 septembre 2026 | Ajout de la licence par poste et de la date d'arrêt planifiée |
 | 1.2 | 30 septembre 2026 | Renommage du projet LicGuard → SmartGUARD ; conversion en Markdown |
+| 1.3.1 | 30 septembre 2026 | La fin du contrat n'arrête plus l'application ; les actions ne se déclenchent qu'à la date d'arrêt optionnelle |
+| 1.4 | 30 septembre 2026 | La date de fin du contrat est la date d'arrêt : suppression de la date d'arrêt distincte, remplacée par l'option « Arrêter l'application à la date de fin » ; reprise de `stop_date` à la migration |

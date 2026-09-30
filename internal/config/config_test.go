@@ -90,3 +90,15 @@ func TestSanitizeName(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateStopOnEnd(t *testing.T) {
+	c := Default()
+	c.StartDate, c.EndDate, c.StopOnEnd = "2026-01-01", "2026-10-05", true
+	if err := Validate(c); err != nil {
+		t.Errorf("arrêt à la date de fin refusé : %v", err)
+	}
+	c.EndDate = ""
+	if err := Validate(c); err == nil {
+		t.Error("arrêt sans date de fin accepté")
+	}
+}

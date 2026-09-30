@@ -196,9 +196,9 @@ func main() {
 		fmt.Printf("Service « %s » : %s OK\n", svcName, cmd)
 	case "status":
 		st := scheduler.ComputeStatus(c, store.State(), time.Now())
-		fmt.Printf("Module      : %s (%s)\nLogiciel    : %s\nContrat     : %s → %s\nJours rest. : %d\nExpiré      : %v\nBandeau     : %v\nMessage     : %s\n",
+		fmt.Printf("Module      : %s (%s)\nLogiciel    : %s\nContrat     : %s → %s\nJours rest. : %d\nExpiré      : %v\nArrêt à la fin : %v (arrêté : %v)\nBandeau     : %v\nMessage     : %s\n",
 			c.ModuleName, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled],
-			c.SoftwareName, c.StartDate, c.EndDate, st.DaysLeft, st.Expired, st.Show, st.Message)
+			c.SoftwareName, c.StartDate, c.EndDate, st.DaysLeft, st.Expired, c.StopOnEnd, st.Stopped, st.Show, st.Message)
 	case "set-password":
 		pw := os.Getenv("SMARTGUARD_PASSWORD")
 		if pw == "" {

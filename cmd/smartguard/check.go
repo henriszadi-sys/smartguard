@@ -34,7 +34,7 @@ func runCheck(cfgPath string) int {
 	if err := config.Validate(c); err != nil {
 		ko("configuration invalide : %v", err)
 	} else {
-		ok("dates : %s → %s, module %s", orDash(c.StartDate), orDash(c.EndDate), map[bool]string{true: "activé", false: "désactivé"}[c.Enabled])
+		ok("dates : %s → %s, arrêt à la fin : %v, module %s", orDash(c.StartDate), orDash(c.EndDate), c.StopOnEnd, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled])
 	}
 	if c.AdminPasswordHash == "" {
 		ko("aucun mot de passe administrateur défini")

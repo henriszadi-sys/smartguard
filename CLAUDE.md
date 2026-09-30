@@ -1,8 +1,8 @@
 # SmartGUARD
 
-Module installé sur un serveur qui suit la date de fin d'un contrat de support lié à un logiciel, avertit les utilisateurs à l'approche de l'échéance, puis exécute des actions à l'échéance ou à une date d'arrêt planifiée (arrêt de services, blocage d'adresses, scripts). Anciennement nommé **LicGuard** : ne plus utiliser ce nom dans le code, les fichiers ni les messages. Seules exceptions, pour la mise à jour des installations existantes : la reprise de l'ancien registre (`platform.LegacyRegistryDir`) et le chemin d'administration `/_licguard` que les modules déjà installés conservent dans leur configuration.
+Module installé sur un serveur qui suit la date de fin d'un contrat de support lié à un logiciel, avertit les utilisateurs à l'approche de l'échéance, puis exécute, à cette date de fin et si l'option d'arrêt est cochée, des actions (arrêt de services, blocage d'adresses, scripts). Anciennement nommé **LicGuard** : ne plus utiliser ce nom dans le code, les fichiers ni les messages. Seules exceptions, pour la mise à jour des installations existantes : la reprise de l'ancien registre (`platform.LegacyRegistryDir`) et le chemin d'administration `/_licguard` que les modules déjà installés conservent dans leur configuration.
 
-La spécification fonctionnelle de référence est `Cahier_des_charges_SmartGUARD.md` (v1.3). En cas de doute, elle fait foi ; les décisions de la section 15 sont des propositions à valider : les suivre par défaut mais les isoler pour pouvoir les changer facilement.
+La spécification fonctionnelle de référence est `Cahier_des_charges_SmartGUARD.md` (v1.4). En cas de doute, elle fait foi ; les décisions de la section 15 sont des propositions à valider : les suivre par défaut mais les isoler pour pouvoir les changer facilement.
 
 ## Stack
 
@@ -48,10 +48,11 @@ Passer `internal/version` et le titre de `LISEZMOI.md` à la nouvelle version av
 
 ## Règles fonctionnelles à ne jamais casser
 
-- L'échéance tombe à **00:00 le jour de la date de fin**, dans le fuseau configuré du serveur.
+- La date de fin du contrat ou de la licence **est** la date d'arrêt : une seule date (`end_date`), à **00:00 le jour de la date de fin**, dans le fuseau configuré du serveur. Le message passe alors à « expiré ».
+- L'arrêt complet (services, blocage des adresses, scripts) n'a lieu, une seule fois, à cette date que si l'option `stop_on_end` est cochée. Option décochée : jamais d'action.
+- `stop_date` n'existe plus : à la lecture d'un ancien `config.json`, sa valeur devient `end_date` et `stop_on_end` passe à vrai.
 - Le recul de l'horloge du serveur ne doit jamais repousser l'échéance : conserver un dernier horodatage connu et ne jamais reculer.
-- Au démarrage du service, recalculer l'état et exécuter **une seule fois** les actions manquées, puis journaliser.
-- La date d'arrêt planifiée et les actions de fin de contrat sont indépendantes ; sans date d'arrêt, aucune action.
+- Au démarrage du service, recalculer l'état et exécuter **une seule fois** les actions d'arrêt manquées, puis journaliser.
 - Le rappel : orange puis rouge à partir de **J-7**, texte par défaut du cahier des charges, nombre de jours restants affiché.
 - Renouvellement : nouvelle date de fin saisie dans l'administration, puis action explicite « Réactiver les services ». **Ne jamais réactiver automatiquement.**
 - Plusieurs modules par serveur : un service, un port et un dossier de configuration distincts par module. Renommer un module renomme le service.
@@ -70,7 +71,7 @@ Passer `internal/version` et le titre de `LISEZMOI.md` à la nouvelle version av
 ## Journaux
 
 - `installation.log` : installations et mises à jour.
-- `config.log` : démarrage, erreurs, actions à l'expiration ou à l'arrêt planifié.
+- `config.log` : démarrage, erreurs, actions à la date de fin.
 - Chaque action d'échéance ou d'arrêt est journalisée avec son résultat.
 
 ## Conventions

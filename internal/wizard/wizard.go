@@ -346,6 +346,7 @@ type installReq struct {
 	Enabled         bool     `json:"enabled"`
 	StartDate       string   `json:"start_date"`
 	EndDate         string   `json:"end_date"`
+	StopOnEnd       bool     `json:"stop_on_end"`
 	WarningDays     int      `json:"warning_days"`
 	Message         string   `json:"message"`
 	ExpiredMessage  string   `json:"expired_message"`
@@ -468,7 +469,7 @@ func doInstall(q installReq) (map[string]any, error) {
 		upstream = strings.TrimRight(pu.String(), "/")
 	}
 	check := config.Default()
-	check.StartDate, check.EndDate, check.Enabled = q.StartDate, q.EndDate, q.Enabled
+	check.StartDate, check.EndDate, check.StopOnEnd, check.Enabled = q.StartDate, q.EndDate, q.StopOnEnd, q.Enabled
 	if err := config.Validate(check); err != nil {
 		return res, err
 	}
@@ -524,7 +525,7 @@ func doInstall(q installReq) (map[string]any, error) {
 			c.SoftwareName = strings.TrimSpace(q.SoftwareName)
 			c.SupplierContact = strings.TrimSpace(q.SupplierContact)
 			c.Enabled = q.Enabled
-			c.StartDate, c.EndDate = q.StartDate, q.EndDate
+			c.StartDate, c.EndDate, c.StopOnEnd = q.StartDate, q.EndDate, q.StopOnEnd
 			c.WarningDays = q.WarningDays
 			c.Message, c.ExpiredMessage = q.Message, q.ExpiredMessage
 			c.Services, c.BlockedURLs, c.Scripts = q.Services, q.BlockedURLs, q.Scripts

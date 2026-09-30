@@ -12,9 +12,9 @@ Un seul fichier à lancer. Un assistant graphique demande toutes les information
 | Étape | Ce qu'on renseigne |
 |---|---|
 | 1. Logiciel | Nom du logiciel, nom du module (proposé automatiquement, ex. « Kelio-Licence »), contact du fournisseur |
-| 2. Contrat | Date de début, date de fin, début du décompte (30 jours par défaut), activation. Un aperçu du message s'affiche |
+| 2. Contrat | Date de début, date de fin (avec l'option « Arrêter l'application à la date de fin »), début du décompte (30 jours par défaut), activation. Un aperçu du message s'affiche |
 | 3. Affichage | **Automatique** (le module ajoute le message aux pages de l'application, bouton « Tester ») ou **par une ligne de code** |
-| 4. À l'expiration | Services à arrêter (cochés dans la liste des services du serveur), adresses à bloquer, scripts à exécuter |
+| 4. À l'arrêt | Services à arrêter (cochés dans la liste des services du serveur), adresses à bloquer, scripts à exécuter |
 | 5. Sécurité | Mot de passe administrateur, dossier d'installation, raccourci sur le bureau |
 | 6. Récapitulatif | Vérification, puis **Installer** |
 
@@ -53,7 +53,8 @@ Lancez `SmartGUARD-Setup.exe` (ou `smartguard-setup`) sur le serveur : les modul
 ## Fonctionnement
 
 - Le message apparaît à J-30 (réglable) : « L'assistance et le support technique à votre logiciel prendra fin dans x jours, veuillez contacter le fournisseur ». Il est orange, puis rouge à J-7.
-- L'expiration a lieu à 00:00 le jour de la date de fin. Les services cochés sont alors arrêtés et désactivés, les adresses sont bloquées (page « accès suspendu ») et les scripts sont exécutés.
+- La **fin du contrat** tombe à 00:00 le jour de la date de fin : le message passe en « expiré ».
+- La date de fin est aussi la **date d'arrêt**, si l'option « Arrêter l'application à la date de fin » est cochée. À 00:00 ce jour-là, les services cochés sont arrêtés et désactivés, les adresses sont bloquées (page « accès suspendu ») et les scripts sont exécutés, une seule fois. Option décochée : aucune action n'a jamais lieu, seul le message change. Une ancienne date d'arrêt est reprise comme date de fin à la mise à jour.
 - **Renouvellement** : sur la page d'administration, saisissez la nouvelle date de fin, enregistrez, puis cliquez sur **Réactiver les services**.
 - **Activer / désactiver** : une case dans l'assistant et dans la page d'administration.
 
@@ -79,7 +80,7 @@ L'adresse est affichée à la fin de l'installation (ex. `http://serveur:8090/_s
 ## En cas de problème
 
 - **`installation.log`** (dossier d'installation) : le détail de chaque installation ou mise à jour.
-- **`config.log`** : le journal du module (démarrage, erreurs, actions à l'expiration).
+- **`config.log`** : le journal du module (démarrage, erreurs, actions à la date de fin).
 - Si le module ne démarre pas, l'assistant affiche un **diagnostic** : configuration, port, application, état du service et journal d'événements Windows.
 - Diagnostic manuel (invite de commandes en administrateur) :
   ```
