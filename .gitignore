@@ -1,3 +1,11 @@
 dist/
 *.exe~
 *.sgpriv
+
+# Exécutables et archives : publiés comme « releases » GitHub, pas versionnés
+Windows/*.exe
+Linux/smartguard-setup
+*.zip
+
+# Documents commerciaux hors code
+SmartGUARD_Tarification.pdf
