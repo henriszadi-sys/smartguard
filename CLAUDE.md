@@ -2,7 +2,7 @@
 
 Module installé sur un serveur qui suit la date de fin d'un contrat de support lié à un logiciel, avertit les utilisateurs à l'approche de l'échéance, puis exécute, à cette date de fin et si l'option d'arrêt est cochée, des actions (arrêt de services, blocage d'adresses, scripts). Anciennement nommé **LicGuard** : ne plus utiliser ce nom dans le code, les fichiers ni les messages. Seules exceptions, pour la mise à jour des installations existantes : la reprise de l'ancien registre (`platform.LegacyRegistryDir`) et le chemin d'administration `/_licguard` que les modules déjà installés conservent dans leur configuration.
 
-La spécification fonctionnelle de référence est `Cahier_des_charges_SmartGUARD.md` (v1.5). En cas de doute, elle fait foi ; les décisions de la section 15 sont des propositions à valider : les suivre par défaut mais les isoler pour pouvoir les changer facilement.
+La spécification fonctionnelle de référence est `Cahier_des_charges_SmartGUARD.md` (v1.6). En cas de doute, elle fait foi ; les décisions de la section 15 sont des propositions à valider : les suivre par défaut mais les isoler pour pouvoir les changer facilement.
 
 ## Stack
 
@@ -16,7 +16,8 @@ La spécification fonctionnelle de référence est `Cahier_des_charges_SmartGUAR
 ## Structure
 
 ```
-cmd/smartguard/      point d'entrée : assistant, service, CLI (status, check, set-password)
+cmd/smartguard/      point d'entrée : assistant, service, CLI (status, check, set-password, license)
+cmd/sgkeys/          outil du fournisseur (non livré aux clients) : keygen, issue, verify
 internal/config/     configuration, état persistant, validation, hachage du mot de passe
 internal/scheduler/  décompte, rappel J-x, échéance, anti-recul d'horloge, Watcher (actions une seule fois)
 internal/actions/    arrêt/réactivation des services, scripts (3 tentatives, délai maximum)
@@ -24,14 +25,14 @@ internal/proxy/      mode automatique, injection du bandeau, page « accès susp
 internal/admin/      routes du module, connexion, sessions, verrouillage, API d'administration
 internal/wizard/     assistant d'installation en six étapes, registre des modules
 internal/platform/   spécificités Windows / Linux (droits, pare-feu, services, raccourcis)
-internal/license/    licence par poste : clé, identifiant machine, liaison locale (config.license.json)
+internal/license/    licence par poste : clés signées Ed25519, identifiant machine, liaison locale (config.license.json), public.key embarquée
 internal/logging/    config.log et installation.log
 internal/version/    numéro de version
 web/                 pages et scripts embarqués
 Windows/, Linux/     exécutables livrés (SmartGUARD-Setup.exe, smartguard-setup)
 ```
 
-Licence (`internal/license/`) : un « poste » est le serveur (identifiant machine haché) ; liaison locale hors ligne, sans serveur central, donc une même clé utilisée sur deux serveurs n'est pas détectable (seule une installation copiée l'est). La licence est informative : elle ne bloque jamais le décompte ni l'arrêt. Identifiant machine, vérification et format de clé sont isolés dans ce paquet pour pouvoir être remplacés (contrôle en ligne, clés signées).
+Licence (`internal/license/`) : un « poste » est le serveur (identifiant machine haché) ; liaison locale hors ligne, sans serveur central, donc une même clé utilisée sur deux serveurs n'est pas détectable (seule une installation copiée l'est). La licence est informative : elle ne bloque jamais le décompte ni l'arrêt. Clés signées (`SGL1.…`, Ed25519) : le fournisseur garde la clé privée (`sgkeys keygen`, fichier `*.sgpriv`, ignoré par git, jamais dans le dépôt) ; la clé publique est dans `internal/license/public.key`, intégrée au binaire. `public.key` vide = mode non signé (clés `SGRD-…` à somme de contrôle) ; renseignée = mode signé, qui refuse tout le reste. Après avoir changé `public.key`, reconstruire les exécutables. Ne jamais mettre de clé privée dans le dépôt, l'archive ni les journaux. Procédure : `EMISSION_CLES.md`. Identifiant machine, vérification et format de clé restent isolés dans ce paquet pour pouvoir être remplacés (contrôle en ligne, révocation).
 
 L'horloge est injectable (`scheduler.Watcher.Now`, `admin.Server.Now`, paramètre `now` de `scheduler.ComputeStatus`) : l'utiliser dans les tests plutôt que `time.Now`.
 
@@ -41,6 +42,7 @@ L'horloge est injectable (`scheduler.Watcher.Now`, `admin.Server.Now`, paramètr
 go build ./cmd/smartguard          # build local
 go test ./...                      # tests
 go vet ./... && gofmt -l .         # vérifications (gofmt ne doit rien lister)
+go run ./cmd/sgkeys issue -key fournisseur.sgpriv -customer "Société X"   # émettre une licence (voir EMISSION_CLES.md)
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o Windows/SmartGUARD-Setup.exe ./cmd/smartguard
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o Linux/smartguard-setup ./cmd/smartguard
 ```

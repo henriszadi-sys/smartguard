@@ -12,6 +12,7 @@
 package license
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -28,7 +29,7 @@ import (
 )
 
 var (
-	ErrInvalidKey     = errors.New("clé de licence invalide (format SGRD-XXXX-XXXX-XXXX-XXXX)")
+	ErrInvalidKey     = errors.New("clé de licence invalide")
 	ErrBoundElsewhere = errors.New("cette installation est liée à un autre poste : désactivez d'abord la licence")
 	ErrOtherKey       = errors.New("une autre licence est déjà activée : désactivez-la d'abord")
 	ErrNotActivated   = errors.New("aucune licence n'est activée")
@@ -49,6 +50,8 @@ type Record struct {
 	Key         string    `json:"key"`
 	MachineID   string    `json:"machine_id"`
 	ActivatedAt time.Time `json:"activated_at"`
+	LicenseID   string    `json:"license_id,omitempty"` // clé signée : identifiant de la licence
+	Customer    string    `json:"customer,omitempty"`   // clé signée : titulaire
 }
 
 // Status : état présenté à l'administration (clé masquée).
@@ -57,6 +60,9 @@ type Status struct {
 	MaskedKey   string `json:"masked_key,omitempty"`
 	MachineID   string `json:"machine_id"` // identifiant du poste courant
 	ActivatedAt string `json:"activated_at,omitempty"`
+	Signed      bool   `json:"signed"`             // clé signée par le fournisseur
+	Customer    string `json:"customer,omitempty"` // titulaire (clé signée)
+	SignedMode  bool   `json:"signed_mode"`        // ce module n'accepte que des clés signées
 	Message     string `json:"message"`
 }
 
@@ -65,6 +71,7 @@ type Manager struct {
 	Path    string                 // license.json
 	Now     func() time.Time       // horloge injectable (time.Now par défaut)
 	Machine func() (string, error) // identifiant du poste (MachineID par défaut)
+	Public  ed25519.PublicKey      // clé publique du fournisseur ; nil = mode non signé (clés SGRD-…)
 
 	mu sync.Mutex
 }
@@ -75,7 +82,9 @@ func PathFor(cfgPath string) string {
 }
 
 // NewManager crée le gestionnaire d'un module d'après son fichier de configuration.
-func NewManager(cfgPath string) *Manager { return &Manager{Path: PathFor(cfgPath)} }
+func NewManager(cfgPath string) *Manager {
+	return &Manager{Path: PathFor(cfgPath), Public: DefaultPublicKey()}
+}
 
 func (m *Manager) now() time.Time {
 	if m.Now != nil {
@@ -115,7 +124,7 @@ func (m *Manager) Status() Status {
 
 func (m *Manager) statusLocked() Status {
 	mid, merr := m.machine()
-	s := Status{State: StateNone, MachineID: mid, Message: "Aucune licence activée sur ce poste."}
+	s := Status{State: StateNone, MachineID: mid, SignedMode: m.Public != nil, Message: "Aucune licence activée sur ce poste."}
 	rec, err := m.load()
 	if err != nil {
 		s.State, s.Message = StateError, err.Error()
@@ -125,6 +134,7 @@ func (m *Manager) statusLocked() Status {
 		return s
 	}
 	s.MaskedKey = Mask(rec.Key)
+	s.Signed, s.Customer = IsSigned(rec.Key), rec.Customer
 	s.ActivatedAt = rec.ActivatedAt.Local().Format("02/01/2006 15:04")
 	switch {
 	case merr != nil:
@@ -144,7 +154,14 @@ func (m *Manager) Activate(key string) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key = NormalizeKey(key)
-	if !CheckKey(key) {
+	var claims Claims
+	if m.Public != nil { // mode signé : seules les licences émises par le fournisseur sont acceptées
+		c, err := Verify(m.Public, key)
+		if err != nil {
+			return m.statusLocked(), err
+		}
+		claims = c
+	} else if !CheckKey(key) {
 		return m.statusLocked(), ErrInvalidKey
 	}
 	mid, err := m.machine()
@@ -165,7 +182,7 @@ func (m *Manager) Activate(key string) (Status, error) {
 			return m.statusLocked(), nil
 		}
 	}
-	if err := config.WriteJSON(m.Path, Record{Key: key, MachineID: mid, ActivatedAt: m.now()}); err != nil {
+	if err := config.WriteJSON(m.Path, Record{Key: key, MachineID: mid, ActivatedAt: m.now(), LicenseID: claims.ID, Customer: claims.Customer}); err != nil {
 		return m.statusLocked(), err
 	}
 	return m.statusLocked(), nil
@@ -196,8 +213,10 @@ const (
 	keyAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // sans 0, O, 1, I
 )
 
-// NormalizeKey met la clé en majuscules et retire les espaces.
-func NormalizeKey(k string) string { return strings.ToUpper(strings.TrimSpace(k)) }
+// NormalizeKey met la clé en majuscules et retire les espaces et retours à la ligne.
+func NormalizeKey(k string) string {
+	return strings.ToUpper(strings.Join(strings.Fields(k), ""))
+}
 
 func checksum(body string) string {
 	sum := crc32.ChecksumIEEE([]byte(body))
@@ -230,8 +249,14 @@ func MakeKey(g1, g2, g3 string) string {
 	return body + "-" + checksum(body)
 }
 
-// Mask masque une clé pour l'affichage et le journal : seul le dernier groupe reste visible.
+// Mask masque une clé pour l'affichage et le journal : seuls les derniers caractères restent visibles.
 func Mask(k string) string {
+	if IsSigned(k) {
+		if len(k) < len(signedPrefix)+6 {
+			return "****"
+		}
+		return signedPrefix + "****" + k[len(k)-6:]
+	}
 	p := strings.Split(k, "-")
 	if len(p) != 5 {
 		return "****"

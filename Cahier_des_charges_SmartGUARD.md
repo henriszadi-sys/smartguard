@@ -4,7 +4,7 @@
 
 | Version | Date | Base |
 |---|---|---|
-| 1.5 | 30 septembre 2026 | LISEZMOI.md et demandes complémentaires (v1.1 du 28 septembre 2026, projet renommé de LicGuard en SmartGUARD) ; date de fin = date d'arrêt ; licence par poste = serveur |
+| 1.6 | 1er octobre 2026 | LISEZMOI.md et demandes complémentaires (v1.1 du 28 septembre 2026, projet renommé de LicGuard en SmartGUARD) ; date de fin = date d'arrêt ; licence par poste = serveur ; clés signées |
 
 *Document de spécification fonctionnelle*
 
@@ -34,9 +34,12 @@ Le produit comprend un assistant d'installation et de configuration, un service 
 ## 4. Licence et installation par poste
 
 - Un **poste** est le serveur qui héberge le module, identifié par un identifiant machine (`MachineGuid` sous Windows, `/etc/machine-id` sous Linux), conservé sous forme hachée (16 caractères).
-- Le module dispose d'une licence individuelle, dont la clé a la forme `SGRD-XXXX-XXXX-XXXX-XXXX` (le dernier groupe est une somme de contrôle). Une même licence ne doit pas être utilisée simultanément sur plusieurs postes.
+- Le module dispose d'une licence individuelle. Une même licence ne doit pas être utilisée simultanément sur plusieurs postes.
+- **Clés signées (mode signé)** : le fournisseur émet les licences avec son outil `sgkeys` et sa clé privée Ed25519 (jamais livrée ni versionnée). La clé a la forme `SGL1.…` et contient un identifiant, la date d'émission et le titulaire, signés. Le module ne contient que la clé publique (`internal/license/public.key`, intégrée au binaire) : il refuse toute clé non émise par le fournisseur. La clé est copiée-collée, y compris sur plusieurs lignes.
+- **Mode non signé** : tant que `public.key` est vide, le module accepte les clés `SGRD-XXXX-XXXX-XXXX-XXXX` (dernier groupe : somme de contrôle, qui ne détecte que les fautes de frappe). En mode signé, ces clés sont refusées.
+- La clé publique intégrée au binaire peut être remplacée par quiconque modifie le programme : la signature authentifie l'émetteur auprès d'un utilisateur honnête, elle n'est pas une protection anti-piratage.
 - À l'activation, le système identifie le poste et lie la licence à ce poste (fichier `config.license.json`, vérifié hors ligne).
-- L'administration affiche le poste, la clé masquée, la date d'activation et l'état : non activée, activée sur ce poste, liée à un autre poste (installation copiée). La clé complète n'est jamais affichée ni journalisée.
+- L'administration affiche le poste, la clé masquée, le titulaire (clé signée), la date d'activation et l'état : non activée, activée sur ce poste, liée à un autre poste (installation copiée). La clé complète n'est jamais affichée ni journalisée.
 - Transfert vers un autre poste : désactivation sur l'ancien poste, puis activation sur le nouveau. Activer sur un autre poste sans désactivation préalable est refusé.
 - Activation, désactivation et état sont aussi disponibles en ligne de commande (`license`).
 - La licence est informative : elle ne bloque ni le décompte ni l'arrêt à la date de fin.
@@ -146,7 +149,7 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 - La prise en charge de HTTPS pour l'administration.
 - Les versions supportées des systèmes et navigateurs, ainsi que les ressources minimales.
 - Le fuseau horaire et le traitement des changements d'heure dans le calcul des échéances.
-- ~~La définition exacte d'un « poste »~~ : décidé en v1.5, le poste est le serveur qui héberge le module. Restent à préciser : l'émission et le contrôle des clés par le fournisseur, les renouvellements, les limites d'activation et un éventuel contrôle en ligne.
+- ~~La définition exacte d'un « poste »~~ : décidé en v1.5, le poste est le serveur qui héberge le module. Décidé en v1.6 : les clés sont signées par le fournisseur (Ed25519). Restent à préciser : les renouvellements, les limites d'activation, la révocation d'une clé et un éventuel contrôle en ligne.
 - ~~La relation entre date de fin de contrat et date d'arrêt planifiée~~ : décidé en v1.4, une seule date ; l'arrêt à cette date est une option.
 
 ---
@@ -160,3 +163,4 @@ L'administrateur peut saisir une nouvelle date de fin dans l'interface d'adminis
 | 1.3.1 | 30 septembre 2026 | La fin du contrat n'arrête plus l'application ; les actions ne se déclenchent qu'à la date d'arrêt optionnelle |
 | 1.4 | 30 septembre 2026 | La date de fin du contrat est la date d'arrêt : suppression de la date d'arrêt distincte, remplacée par l'option « Arrêter l'application à la date de fin » ; reprise de `stop_date` à la migration |
 | 1.5 | 30 septembre 2026 | Licence par poste implémentée : poste = serveur, liaison locale hors ligne (`config.license.json`), activation / désactivation / transfert dans l'administration et en ligne de commande, détection d'une installation copiée |
+| 1.6 | 1er octobre 2026 | Clés de licence signées (Ed25519) : outil fournisseur `sgkeys`, clé publique intégrée au module (`public.key`), mode signé refusant les clés non émises par le fournisseur, titulaire affiché ; mode non signé conservé tant que `public.key` est vide |

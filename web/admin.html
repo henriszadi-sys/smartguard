@@ -65,12 +65,13 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       <span class="pill off" id="lic-state" style="margin-top:0">–</span>
       <dl class="kv">
         <dt>Poste</dt><dd id="lic-machine"><code>–</code></dd>
-        <dt>Licence</dt><dd id="lic-key">–</dd>
+        <dt>Licence</dt><dd id="lic-key" style="word-break:break-all">–</dd>
+        <dt>Titulaire</dt><dd id="lic-customer">–</dd>
         <dt>Activée le</dt><dd id="lic-date">–</dd>
       </dl>
       <div class="hint" id="lic-msg" style="margin-top:8px"></div>
-      <label for="lic-input">Clé de licence <span class="hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
-      <input type="text" id="lic-input" maxlength="40" autocomplete="off" spellcheck="false" placeholder="SGRD-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase">
+      <label for="lic-input">Clé de licence <span class="hint" id="lic-hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
+      <input type="text" id="lic-input" maxlength="400" autocomplete="off" spellcheck="false" placeholder="SGRD-XXXX-XXXX-XXXX-XXXX">
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">
         <button type="button" class="primary" id="lic-activate">Activer sur ce poste</button>
         <button type="button" id="lic-deactivate" title="Première étape d'un transfert vers un autre poste">Désactiver</button>
@@ -198,6 +199,9 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
     $('lic-state').textContent = v[0]; $('lic-state').className = 'pill ' + v[1];
     $('lic-machine').querySelector('code').textContent = l.machine_id || '–';
     $('lic-key').textContent = l.masked_key || '–';
+    $('lic-customer').textContent = l.customer || '–';
+    var ph = l.signed_mode ? 'SGL1.… (clé fournie par l’éditeur)' : 'SGRD-XXXX-XXXX-XXXX-XXXX';
+    $('lic-input').placeholder = ph; $('lic-hint').textContent = '(' + (l.signed_mode ? 'clé signée SGL1.…' : 'SGRD-XXXX-XXXX-XXXX-XXXX') + ')';
     $('lic-date').textContent = l.activated_at || '–';
     $('lic-msg').textContent = l.message || '';
   }

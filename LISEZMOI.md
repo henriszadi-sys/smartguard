@@ -1,4 +1,4 @@
-# SmartGUARD — module de rappel d'expiration (v1.5)
+# SmartGUARD — module de rappel d'expiration (v1.6)
 
 Un seul fichier à lancer. Un assistant graphique demande toutes les informations, puis installe le module comme service sur le serveur.
 
@@ -106,5 +106,7 @@ Le « poste » est le serveur qui héberge le module. Dans l'administration, la 
 - **Activée sur ce poste** : la clé `SGRD-XXXX-XXXX-XXXX-XXXX` est liée à ce serveur.
 - **Liée à un autre poste** : le dossier du module a été copié depuis un autre serveur. Désactivez puis activez la licence sur ce poste.
 - **Non activée** : aucune licence n'est liée à ce serveur.
+
+La clé de licence est fournie par l'éditeur du logiciel (forme `SGL1.…`, longue : copiez-la en entier, elle peut être collée sur plusieurs lignes). Le module refuse toute clé qui n'a pas été émise par l'éditeur. Après activation, le titulaire de la licence s'affiche.
 
 Pour **transférer** une licence, désactivez-la sur l'ancien serveur, puis activez-la sur le nouveau. La licence n'arrête ni le décompte ni l'arrêt à la date de fin. Sans serveur central, SmartGUARD détecte une installation copiée, mais pas l'usage de la même clé sur deux serveurs distincts.
