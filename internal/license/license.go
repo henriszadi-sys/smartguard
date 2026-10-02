@@ -1,11 +1,14 @@
-// Package license lie une licence à un poste et le signale dans l'administration.
+// Package license lie la licence SmartGUARD à un serveur et le signale dans l'administration.
 //
-// Décisions du cahier des charges (section 15) retenues par défaut et isolées
-// ici pour pouvoir être changées facilement :
-//   - un « poste » est le serveur qui héberge le module (identifiant machine) ;
-//   - aucun serveur central : la liaison est locale (license.json) et vérifiée
-//     hors ligne ; une installation copiée sur une autre machine est détectée ;
-//   - la licence est informative : elle ne bloque jamais le décompte ni l'arrêt.
+// Règles du cahier des charges (section 4) :
+//   - une licence par serveur (« poste »), qui couvre tous les modules de ce serveur :
+//     la liaison est enregistrée une seule fois par serveur (ServerPath) ;
+//   - sans licence valide, le module ne s'installe pas (contrôle fait par
+//     l'assistant et la commande « install », voir RequireForInstall) ;
+//   - une fois le module installé, la licence ne bloque jamais le décompte, les
+//     rappels ni les actions configurées par le fournisseur ;
+//   - aucun serveur central pour l'instant : la liaison est vérifiée hors ligne ;
+//     une installation copiée sur une autre machine est détectée.
 //
 // SmartGUARD n'est pas une protection anti-piratage : ce paquet ne promet pas
 // d'empêcher l'usage d'une même clé sur deux serveurs sans lien réseau.
@@ -26,13 +29,15 @@ import (
 	"time"
 
 	"smartguard/internal/config"
+	"smartguard/internal/platform"
 )
 
 var (
-	ErrInvalidKey     = errors.New("clé de licence invalide")
-	ErrBoundElsewhere = errors.New("cette installation est liée à un autre poste : désactivez d'abord la licence")
-	ErrOtherKey       = errors.New("une autre licence est déjà activée : désactivez-la d'abord")
-	ErrNotActivated   = errors.New("aucune licence n'est activée")
+	ErrInvalidKey      = errors.New("clé de licence invalide")
+	ErrBoundElsewhere  = errors.New("cette installation est liée à un autre poste : désactivez d'abord la licence")
+	ErrOtherKey        = errors.New("une autre licence est déjà activée : désactivez-la d'abord")
+	ErrNotActivated    = errors.New("aucune licence n'est activée")
+	ErrLicenseRequired = errors.New("licence SmartGUARD obligatoire : saisissez la clé de licence de ce serveur")
 )
 
 // State : situation de la licence vis-à-vis du poste courant.
@@ -68,10 +73,11 @@ type Status struct {
 
 // Manager lit et écrit la liaison licence / poste.
 type Manager struct {
-	Path    string                 // license.json
-	Now     func() time.Time       // horloge injectable (time.Now par défaut)
-	Machine func() (string, error) // identifiant du poste (MachineID par défaut)
-	Public  ed25519.PublicKey      // clé publique du fournisseur ; nil = mode non signé (clés SGRD-…)
+	Path       string                 // liaison du serveur (ServerPath)
+	LegacyPath string                 // ancienne liaison propre à un module (v1.8 et avant), reprise puis supprimée
+	Now        func() time.Time       // horloge injectable (time.Now par défaut)
+	Machine    func() (string, error) // identifiant du poste (MachineID par défaut)
+	Public     ed25519.PublicKey      // clé publique du fournisseur ; nil = mode non signé (clés SGRD-…)
 
 	mu sync.Mutex
 }
@@ -81,9 +87,35 @@ func PathFor(cfgPath string) string {
 	return strings.TrimSuffix(cfgPath, filepath.Ext(cfgPath)) + ".license.json"
 }
 
-// NewManager crée le gestionnaire d'un module d'après son fichier de configuration.
+// ServerPath : fichier unique de licence du serveur, à côté de la liste des installations.
+func ServerPath() string {
+	return filepath.Join(platform.RegistryDir(), "license.json")
+}
+
+// NewManager crée le gestionnaire de la licence du serveur ; cfgPath (optionnel)
+// désigne la configuration d'un module dont l'ancienne licence est reprise.
 func NewManager(cfgPath string) *Manager {
-	return &Manager{Path: PathFor(cfgPath), Public: DefaultPublicKey()}
+	m := &Manager{Path: ServerPath(), Public: DefaultPublicKey()}
+	if cfgPath != "" {
+		m.LegacyPath = PathFor(cfgPath)
+	}
+	return m
+}
+
+// RequireForInstall : contrôle à l'installation d'un nouveau module. Renvoie nil
+// si la licence du serveur est active, ou si la clé fournie l'active.
+func (m *Manager) RequireForInstall(key string) (Status, error) {
+	st := m.Status()
+	switch st.State {
+	case StateActive:
+		return st, nil
+	case StateOtherMachine:
+		return st, errors.New("la licence SmartGUARD enregistrée est liée à un autre serveur : désactivez-la puis activez une licence sur ce serveur")
+	}
+	if strings.TrimSpace(key) == "" {
+		return st, ErrLicenseRequired
+	}
+	return m.Activate(key)
 }
 
 func (m *Manager) now() time.Time {
@@ -103,7 +135,7 @@ func (m *Manager) machine() (string, error) {
 func (m *Manager) load() (*Record, error) {
 	b, err := os.ReadFile(m.Path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return m.migrateLegacy()
 	}
 	if err != nil {
 		return nil, err
@@ -112,6 +144,33 @@ func (m *Manager) load() (*Record, error) {
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, fmt.Errorf("fichier de licence illisible %s : %w", m.Path, err)
 	}
+	return &r, nil
+}
+
+// migrateLegacy reprend la licence enregistrée par un module (versions 1.8 et
+// antérieures) comme licence du serveur, puis supprime l'ancien fichier.
+func (m *Manager) migrateLegacy() (*Record, error) {
+	if m.LegacyPath == "" {
+		return nil, nil
+	}
+	b, err := os.ReadFile(m.LegacyPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var r Record
+	if err := json.Unmarshal(b, &r); err != nil || r.Key == "" {
+		return nil, nil // ancien fichier illisible : ignoré
+	}
+	if err := os.MkdirAll(filepath.Dir(m.Path), 0755); err != nil {
+		return nil, err
+	}
+	if err := config.WriteJSON(m.Path, r); err != nil {
+		return nil, err
+	}
+	_ = os.Remove(m.LegacyPath)
 	return &r, nil
 }
 
@@ -124,7 +183,7 @@ func (m *Manager) Status() Status {
 
 func (m *Manager) statusLocked() Status {
 	mid, merr := m.machine()
-	s := Status{State: StateNone, MachineID: mid, SignedMode: m.Public != nil, Message: "Aucune licence activée sur ce poste."}
+	s := Status{State: StateNone, MachineID: mid, SignedMode: m.Public != nil, Message: "Aucune licence SmartGUARD activée sur ce serveur. Le module installé continue de fonctionner ; une licence est exigée pour installer un nouveau module."}
 	rec, err := m.load()
 	if err != nil {
 		s.State, s.Message = StateError, err.Error()
@@ -143,7 +202,7 @@ func (m *Manager) statusLocked() Status {
 		s.State = StateOtherMachine
 		s.Message = "Cette licence est liée à un autre poste (l'installation a été copiée). Désactivez-la puis activez-la sur ce poste."
 	default:
-		s.State, s.Message = StateActive, "Licence activée sur ce poste."
+		s.State, s.Message = StateActive, "Licence SmartGUARD activée sur ce serveur (tous les modules du serveur)."
 	}
 	return s
 }
@@ -181,6 +240,9 @@ func (m *Manager) Activate(key string) (Status, error) {
 		default:
 			return m.statusLocked(), nil
 		}
+	}
+	if err := os.MkdirAll(filepath.Dir(m.Path), 0755); err != nil {
+		return m.statusLocked(), err
 	}
 	if err := config.WriteJSON(m.Path, Record{Key: key, MachineID: mid, ActivatedAt: m.now(), LicenseID: claims.ID, Customer: claims.Customer}); err != nil {
 		return m.statusLocked(), err

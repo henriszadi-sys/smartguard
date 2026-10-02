@@ -149,3 +149,66 @@ func TestPathFor(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Licence par serveur : l'ancienne licence d'un module (v1.8 et avant) est
+// reprise une seule fois comme licence du serveur, puis l'ancien fichier est supprimé.
+func TestLegacyModuleLicenseBecomesServerLicense(t *testing.T) {
+	mid := "poste-a"
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "kelio", "config.license.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0755); err != nil {
+		t.Fatal(err)
+	}
+	key := MakeKey("ABCD", "EFGH", "JKLM")
+	if err := os.WriteFile(legacy, []byte(`{"key":"`+key+`","machine_id":"poste-a","activated_at":"2026-09-01T10:00:00Z"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m := &Manager{Path: filepath.Join(dir, "ProgramData", "SmartGUARD", "license.json"), LegacyPath: legacy,
+		Now: func() time.Time { return t0 }, Machine: func() (string, error) { return mid, nil }}
+	if s := m.Status(); s.State != StateActive {
+		t.Fatalf("licence du module non reprise : %+v", s)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatal("ancien fichier de licence du module non supprimé")
+	}
+	// Un autre module du même serveur voit la même licence.
+	other := &Manager{Path: m.Path, Machine: m.Machine}
+	if s := other.Status(); s.State != StateActive {
+		t.Fatalf("licence du serveur non partagée entre modules : %+v", s)
+	}
+	// Après désactivation, l'ancienne licence ne revient pas.
+	if _, err := m.Deactivate(); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Status(); s.State != StateNone {
+		t.Fatalf("licence revenue après désactivation : %+v", s)
+	}
+}
+
+// Installation : sans licence valide, refus ; une licence déjà active sur le
+// serveur suffit pour installer d'autres modules.
+func TestRequireForInstall(t *testing.T) {
+	mid := "poste-a"
+	m := newManager(t, &mid)
+	if _, err := m.RequireForInstall(""); !errors.Is(err, ErrLicenseRequired) {
+		t.Fatalf("installation sans licence : %v", err)
+	}
+	if _, err := m.RequireForInstall("SGRD-0000-0000-0000-0000"); err == nil {
+		t.Fatal("installation avec une clé invalide acceptée")
+	}
+	if s := m.Status(); s.State != StateNone {
+		t.Fatalf("clé invalide enregistrée : %+v", s)
+	}
+	key := MakeKey("ABCD", "EFGH", "JKLM")
+	if s, err := m.RequireForInstall(key); err != nil || s.State != StateActive {
+		t.Fatalf("installation avec clé valide : %+v %v", s, err)
+	}
+	if _, err := m.RequireForInstall(""); err != nil {
+		t.Fatalf("second module sur un serveur déjà licencié : %v", err)
+	}
+	// Installation copiée sur un autre serveur : refus jusqu'à la désactivation.
+	mid = "poste-b"
+	if _, err := m.RequireForInstall(""); err == nil || !strings.Contains(err.Error(), "autre serveur") {
+		t.Fatalf("licence d'un autre serveur acceptée : %v", err)
+	}
+}
