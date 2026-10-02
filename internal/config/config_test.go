@@ -211,3 +211,14 @@ func TestValidateReportLink(t *testing.T) {
 		t.Errorf("adresse valide refusée : %v", err)
 	}
 }
+
+func TestClientAccessDefaults(t *testing.T) {
+	c := Default()
+	if c.ClientUser != "client" || c.ClientPasswordHash != "" {
+		t.Fatalf("accès client par défaut : %q actif=%v", c.ClientUser, c.ClientPasswordHash != "")
+	}
+	c.ClientUser = "ADMIN"
+	if Validate(c) == nil {
+		t.Fatal("identifiant client identique à celui du technicien accepté")
+	}
+}

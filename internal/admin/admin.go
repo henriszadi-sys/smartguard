@@ -36,7 +36,7 @@ type Server struct {
 	License *license.Manager           // liaison licence / poste (nil = fonction absente)
 
 	sessMu   sync.Mutex
-	sessions map[string]time.Time
+	sessions map[string]session
 	failMu   sync.Mutex
 	fails    map[string][]time.Time
 }
@@ -106,7 +106,7 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 	case "", "/":
 		http.Redirect(w, r, c.AdminPath+"/admin", http.StatusFound)
 	case "/admin":
-		if !s.validSession(r) {
+		if _, ok := s.sessionRole(r); !ok {
 			s.renderLogin(w, c, c.AdminUser, "", http.StatusOK)
 			return
 		}
@@ -128,7 +128,20 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		if !s.auth(w, r) {
 			return
 		}
+		if r.Method != http.MethodGet && !s.requireTechnician(w, r) {
+			return
+		}
 		s.apiLicense(w, r)
+	case "/api/export":
+		if !s.auth(w, r) || !s.requireTechnician(w, r) {
+			return
+		}
+		s.apiExport(w, r, c)
+	case "/api/import":
+		if !s.auth(w, r) || !s.requireTechnician(w, r) || !postOnly(w, r) {
+			return
+		}
+		s.apiImport(w, r)
 	case "/api/log":
 		if !s.auth(w, r) {
 			return
@@ -141,23 +154,30 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 
 type adminView struct {
 	config.Config
-	AdminPasswordHash string               `json:"admin_password_hash,omitempty"` // masque le hash
-	Status            scheduler.Status     `json:"status"`
-	Proxy             bool                 `json:"proxy"`
-	DefaultMessages   map[string][2]string `json:"default_messages"` // messages par défaut par type d'échéance
+	AdminPasswordHash  string               `json:"admin_password_hash,omitempty"`  // masque le hash
+	ClientPasswordHash string               `json:"client_password_hash,omitempty"` // masque le hash
+	Role               string               `json:"role"`                           // technicien | client
+	ClientEnabled      bool                 `json:"client_enabled"`                 // accès client actif
+	Status             scheduler.Status     `json:"status"`
+	Proxy              bool                 `json:"proxy"`
+	DefaultMessages    map[string][2]string `json:"default_messages"` // messages par défaut par type d'échéance
 }
 
 func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Config) {
 	switch r.Method {
 	case http.MethodGet:
-		WriteJSON(w, adminView{Config: c, Status: s.status(c), Proxy: s.Proxy != nil, DefaultMessages: defaultMessages()})
+		role, _ := s.sessionRole(r)
+		WriteJSON(w, adminView{Config: c, Status: s.status(c), Proxy: s.Proxy != nil, DefaultMessages: defaultMessages(),
+			Role: role, ClientEnabled: c.ClientPasswordHash != ""})
 	case http.MethodPost:
-		if !postOnly(w, r) {
+		if !postOnly(w, r) || !s.requireTechnician(w, r) {
 			return
 		}
 		var in struct {
 			config.Config
-			NewPassword string `json:"new_password"`
+			NewPassword       string `json:"new_password"`
+			ClientEnabled     *bool  `json:"client_enabled"`      // nil = inchangé
+			NewClientPassword string `json:"new_client_password"` // vide = inchangé
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
 			http.Error(w, "données invalides", http.StatusBadRequest)
@@ -184,6 +204,25 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 				}
 				x.AdminPasswordHash = h
 			}
+			if u := strings.TrimSpace(in.ClientUser); u != "" {
+				x.ClientUser = u
+			}
+			if in.ClientEnabled != nil && !*in.ClientEnabled {
+				x.ClientPasswordHash = "" // accès client désactivé
+			}
+			if in.NewClientPassword != "" {
+				if len(in.NewClientPassword) < 8 {
+					return fmt.Errorf("le mot de passe de l'accès client doit contenir au moins 8 caractères")
+				}
+				if in.NewClientPassword == in.NewPassword || (x.AdminPasswordHash != "" && config.CheckPassword(x.AdminPasswordHash, in.NewClientPassword)) {
+					return fmt.Errorf("le mot de passe de l'accès client doit être différent de celui du technicien")
+				}
+				h, err := config.HashPassword(in.NewClientPassword)
+				if err != nil {
+					return err
+				}
+				x.ClientPasswordHash = h
+			}
 			return nil
 		})
 		if err != nil {
@@ -198,6 +237,11 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 		for _, d := range after.Deadlines {
 			s.Log.Printf("  échéance %s « %s » (%s) : %s → %s, arrêt à la date de fin : %v",
 				d.ID, d.Name(), config.KindLabel(d.Kind), orDash(d.StartDate), d.EndDate, d.StopOnEnd)
+		}
+		if (before.ClientPasswordHash == "") != (after.ClientPasswordHash == "") {
+			s.Log.Printf("Accès client %s par le technicien", map[bool]string{true: "désactivé", false: "activé"}[after.ClientPasswordHash == ""])
+		} else if before.ClientPasswordHash != after.ClientPasswordHash {
+			s.Log.Printf("Mot de passe de l'accès client modifié par le technicien")
 		}
 		if before.Enabled != after.Enabled {
 			s.Log.Printf("Module %s", map[bool]string{true: "activé", false: "désactivé"}[after.Enabled])
@@ -292,6 +336,9 @@ func (s *Server) apiRestore(w http.ResponseWriter, r *http.Request, c config.Con
 		}
 		ds = []config.Deadline{d}
 	}
+	if role, _ := s.sessionRole(r); len(ds) > 0 {
+		s.Log.Printf("Réactivation demandée par %s (%s)", map[string]string{RoleTechnician: "le technicien", RoleClient: "l'accès client"}[role], clientIP(r))
+	}
 	if s.Restore != nil && len(ds) > 0 {
 		s.Restore(ds)
 	}
@@ -362,49 +409,73 @@ const (
 	failWindow    = 15 * time.Minute
 )
 
-func (s *Server) newSession() string {
+// Rôles de connexion à l'administration.
+const (
+	RoleTechnician = "technicien" // technicien du fournisseur : tous les réglages
+	RoleClient     = "client"     // administrateur du serveur du client : consultation et réactivation
+)
+
+type session struct {
+	exp  time.Time
+	role string
+}
+
+func (s *Server) newSession(role string) string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	tok := hex.EncodeToString(b)
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
 	if s.sessions == nil {
-		s.sessions = map[string]time.Time{}
+		s.sessions = map[string]session{}
 	}
 	now := time.Now()
-	for k, exp := range s.sessions {
-		if now.After(exp) {
+	for k, se := range s.sessions {
+		if now.After(se.exp) {
 			delete(s.sessions, k)
 		}
 	}
-	s.sessions[tok] = now.Add(sessionTTL)
+	s.sessions[tok] = session{exp: now.Add(sessionTTL), role: role}
 	return tok
 }
 
-func (s *Server) validSession(r *http.Request) bool {
+// sessionRole renvoie le rôle de la session en cours et prolonge celle-ci.
+func (s *Server) sessionRole(r *http.Request) (string, bool) {
 	ck, err := r.Cookie(sessionCookie)
 	if err != nil || ck.Value == "" {
-		return false
+		return "", false
 	}
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
-	exp, ok := s.sessions[ck.Value]
-	if !ok || time.Now().After(exp) {
+	se, ok := s.sessions[ck.Value]
+	if !ok || time.Now().After(se.exp) {
 		delete(s.sessions, ck.Value)
-		return false
+		return "", false
 	}
-	s.sessions[ck.Value] = time.Now().Add(sessionTTL) // prolonge la session active
-	return true
+	se.exp = time.Now().Add(sessionTTL) // prolonge la session active
+	s.sessions[ck.Value] = se
+	return se.role, true
 }
 
 // auth protège les API : renvoie 401 JSON (la page d'administration redirige alors vers la connexion).
 func (s *Server) auth(w http.ResponseWriter, r *http.Request) bool {
-	if s.validSession(r) {
+	if _, ok := s.sessionRole(r); ok {
 		return true
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": "Session expirée : reconnectez-vous."})
+	return false
+}
+
+// requireTechnician refuse (403) les réglages réservés au fournisseur à un accès client.
+func (s *Server) requireTechnician(w http.ResponseWriter, r *http.Request) bool {
+	if role, _ := s.sessionRole(r); role == RoleTechnician {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "Réglage réservé au technicien du fournisseur."})
 	return false
 }
 
@@ -439,15 +510,26 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request, c config.Co
 	_ = r.ParseForm()
 	u := strings.TrimSpace(r.PostFormValue("username"))
 	p := r.PostFormValue("password")
-	if c.AdminPasswordHash != "" && subtle.ConstantTimeCompare([]byte(strings.ToLower(u)), []byte(strings.ToLower(c.AdminUser))) == 1 && config.CheckPassword(c.AdminPasswordHash, p) {
-		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: s.newSession(), Path: c.AdminPath,
+	role := ""
+	switch {
+	case c.AdminPasswordHash != "" && sameUser(u, c.AdminUser) && config.CheckPassword(c.AdminPasswordHash, p):
+		role = RoleTechnician
+	case c.ClientPasswordHash != "" && sameUser(u, c.ClientUser) && config.CheckPassword(c.ClientPasswordHash, p):
+		role = RoleClient
+	}
+	if role != "" {
+		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: s.newSession(role), Path: c.AdminPath,
 			HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil})
-		s.Log.Printf("Connexion administrateur depuis %s", ip)
+		s.Log.Printf("Connexion %s depuis %s", map[string]string{RoleTechnician: "du technicien", RoleClient: "de l'accès client"}[role], ip)
 		http.Redirect(w, r, c.AdminPath+"/admin", http.StatusSeeOther)
 		return
 	}
 	s.recordFail(ip)
 	s.renderLogin(w, c, u, "Identifiant ou mot de passe incorrect.", http.StatusUnauthorized)
+}
+
+func sameUser(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(strings.ToLower(strings.TrimSpace(a))), []byte(strings.ToLower(b))) == 1
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, c config.Config) {

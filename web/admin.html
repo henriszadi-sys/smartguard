@@ -52,10 +52,13 @@ select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8p
 .dlist b{font-weight:600}
 button.small{padding:5px 10px;font-size:12px}
 button.danger{color:var(--crit)}
+.rolebar{max-width:1060px;margin:12px auto 0;padding:0 16px}.rolebar div{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 14px;font-size:13px}
+.readonly .tech-only{display:none!important}
 </style>
 </head>
 <body>
-<header><div class="in" style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><h1 id="title">Rappel d'expiration</h1><p id="subtitle">Administration du module</p></div><a href="logout" style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 12px">Se déconnecter</a></div></header>
+<header><div class="in" style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><h1 id="title">Rappel d'expiration</h1><p id="subtitle">Administration du module</p></div><span class="pill off" id="role" style="margin:0">–</span><a href="logout" style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 12px">Se déconnecter</a></div></header>
+<div class="rolebar" id="rolebar" hidden><div><b>Accès client</b> : consultation et réactivation des services. Les réglages sont réservés au technicien du fournisseur.</div></div>
 <main>
   <div class="side">
     <section class="card">
@@ -83,13 +86,13 @@ button.danger{color:var(--crit)}
         <dt>Activée le</dt><dd id="lic-date">–</dd>
       </dl>
       <div class="hint" id="lic-msg" style="margin-top:8px"></div>
-      <label for="lic-input">Clé de licence <span class="hint" id="lic-hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
+      <div class="tech-only"><label for="lic-input">Clé de licence <span class="hint" id="lic-hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
       <input type="text" id="lic-input" maxlength="400" autocomplete="off" spellcheck="false" placeholder="SGRD-XXXX-XXXX-XXXX-XXXX">
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">
         <button type="button" class="primary" id="lic-activate">Activer sur ce serveur</button>
         <button type="button" id="lic-deactivate" title="Première étape d'un transfert vers un autre poste">Désactiver</button>
         <span id="lic-res" style="font-size:13px"></span>
-      </div>
+      </div></div>
       <p class="hint" style="margin:12px 0 0">Une licence par serveur : elle couvre tous les modules SmartGUARD de ce serveur et est exigée pour installer un module. Une fois installé, le module ne s'arrête jamais à cause de la licence. Pour changer de serveur : désactivez-la ici, puis activez-la sur le nouveau serveur.</p>
     </section>
     <section class="card" id="snippet-card">
@@ -127,13 +130,29 @@ button.danger{color:var(--crit)}
       <input type="text" id="report_url" maxlength="400" placeholder="https://portail.exemple.ci/signaler">
     </fieldset>
 
-    <fieldset><legend>Sécurité</legend>
-      <label for="new_password">Nouveau mot de passe administrateur <span class="hint">(laisser vide pour conserver)</span></label>
+    <fieldset class="tech-only"><legend>Sécurité</legend>
+      <label for="new_password">Nouveau mot de passe du technicien <span class="hint">(identifiant <b id="admin_user_lbl">admin</b> — laisser vide pour conserver)</span></label>
       <input type="password" id="new_password" autocomplete="new-password" style="max-width:320px">
     </fieldset>
 
+    <fieldset class="tech-only"><legend>Accès client</legend>
+      <label class="switch"><input type="checkbox" id="client_enabled"> <span><b>Accès client activé</b><br><span class="hint">Pour l'administrateur du serveur du client : consultation de l'administration et réactivation des services, sans aucun réglage. Désactivé par défaut.</span></span></label>
+      <div class="row">
+        <div><label for="client_user">Identifiant client</label><input type="text" id="client_user" maxlength="40" autocomplete="off"></div>
+        <div><label for="new_client_password">Mot de passe client <span class="hint" id="client_pw_hint">(8 caractères min.)</span></label><input type="password" id="new_client_password" autocomplete="new-password"></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="tech-only"><legend>Sauvegarde de la configuration</legend>
+      <p class="hint" style="margin:6px 0 0">Le fichier contient les échéances et les réglages du module, sans aucun mot de passe. L'import remplace les échéances et réglages, mais garde le port, l'adresse de l'application et les mots de passe. Une sauvegarde automatique est aussi faite avant chaque mise à jour par l'assistant.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center">
+        <a id="export" href="#" style="font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px 14px">Exporter</a>
+        <label style="margin:0;font-weight:600;color:var(--accent);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer">Importer…<input type="file" id="import" accept=".json,application/json" hidden></label>
+      </div>
+    </fieldset>
+
     <div class="actions">
-      <button type="submit" class="primary">Enregistrer</button>
+      <button type="submit" class="primary tech-only">Enregistrer</button>
       <button type="button" id="restore" title="Après renouvellement : réactive et redémarre les services des échéances qui ne sont plus arrêtées">Réactiver les services</button>
       <span id="msg"></span>
     </div>
@@ -259,6 +278,8 @@ button.danger{color:var(--crit)}
       });
     });
   }
+  var _render = renderDeadlines;
+  renderDeadlines = function(){ _render(); if (role) applyRole(role); };
   function byKey(k){ for (var i=0;i<dls.length;i++) if (String(dls[i]._k) === String(k)) return dls[i]; return null; }
   function lines(v){ return v.split('\n').map(function(t){ return t.trim(); }).filter(Boolean); }
   function collect(){
@@ -306,6 +327,28 @@ button.danger{color:var(--crit)}
     dls.push(x); renderDeadlines(); paintDeadlineStates(last);
   });
 
+  // Accès client : tout en lecture seule, sauf la réactivation des services.
+  var role = '';
+  function applyRole(r){
+    role = r;
+    var ro = r !== 'technicien';
+    document.body.classList.toggle('readonly', ro);
+    $('rolebar').hidden = !ro;
+    $('role').textContent = ro ? 'Accès client' : 'Technicien';
+    $('role').className = 'pill ' + (ro ? 'warning' : 'ok');
+    $('f').querySelectorAll('input,select,textarea').forEach(function(el){ el.disabled = ro; });
+    $('f').querySelectorAll('[data-remove]').forEach(function(el){ el.hidden = ro; });
+    $('add-deadline').hidden = ro;
+  }
+  $('export').addEventListener('click', function(e){ e.preventDefault(); location.href = base + '/api/export'; setTimeout(loadLog, 1500); });
+  $('import').addEventListener('change', function(){
+    var f = this.files && this.files[0]; this.value = '';
+    if (!f) return;
+    if (!confirm('Importer « ' + f.name + ' » ?\nLes échéances et réglages actuels seront remplacés (port, adresse et mots de passe conservés).')) return;
+    var r = new FileReader();
+    r.onload = function(){ api('/api/import', {method:'POST', body: String(r.result||'')}).then(function(x){ msg('Configuration importée (' + x.deadlines + ' échéance' + (x.deadlines>1?'s':'') + ')'); load(); }).catch(function(e){ msg(e.message, true); }); };
+    r.readAsText(f);
+  });
   function load(fill){
     api('/api/config').then(function(c){
       last = c;
@@ -314,6 +357,11 @@ button.danger{color:var(--crit)}
       fields.forEach(function(k){ $(k).value = c[k] == null ? '' : c[k]; });
       $('enabled').checked = !!c.enabled;
       $('report_enabled').checked = !!c.report_enabled;
+      $('client_enabled').checked = !!c.client_enabled;
+      $('client_user').value = c.client_user || 'client';
+      $('admin_user_lbl').textContent = c.admin_user || 'admin';
+      $('client_pw_hint').textContent = c.client_enabled ? '(laisser vide pour conserver)' : '(8 caractères min.)';
+      applyRole(c.role);
       dls = (c.deadlines || []).map(function(x){ x._k = ++seq; return x; });
       if (dls.length === 1) dls[0]._open = true;
       renderDeadlines();
@@ -351,10 +399,12 @@ button.danger{color:var(--crit)}
 
   $('f').addEventListener('submit', function(e){
     e.preventDefault();
-    var body = { enabled: $('enabled').checked, report_enabled: $('report_enabled').checked, new_password: $('new_password').value, deadlines: collect() };
+    var body = { enabled: $('enabled').checked, report_enabled: $('report_enabled').checked, new_password: $('new_password').value, deadlines: collect(),
+      client_enabled: $('client_enabled').checked, client_user: $('client_user').value.trim(), new_client_password: $('new_client_password').value };
+    if (body.client_enabled && !(last && last.client_enabled) && !body.new_client_password) { msg('Définissez le mot de passe de l\u2019accès client pour l\u2019activer.', true); return; }
     fields.forEach(function(k){ body[k] = $(k).value; });
     api('/api/config', {method:'POST', body: JSON.stringify(body)})
-      .then(function(){ $('new_password').value=''; msg('Enregistré'); load(); })
+      .then(function(){ $('new_password').value=''; $('new_client_password').value=''; msg('Enregistré'); load(); })
       .catch(function(e){ msg(e.message, true); });
   });
   $('restore').addEventListener('click', function(){

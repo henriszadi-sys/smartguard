@@ -101,8 +101,14 @@ type Config struct {
 	TLSCert   string `json:"tls_cert"`
 	TLSKey    string `json:"tls_key"`
 
-	AdminUser         string `json:"admin_user"`
+	AdminUser         string `json:"admin_user"` // technicien du fournisseur : tous les réglages
 	AdminPasswordHash string `json:"admin_password_hash"`
+
+	// Accès client (administrateur du serveur du client) : consultation et
+	// réactivation des services, aucun réglage. Désactivé tant que le
+	// technicien n'a pas défini de mot de passe client.
+	ClientUser         string `json:"client_user"`
+	ClientPasswordHash string `json:"client_password_hash,omitempty"`
 }
 
 // Deadline renvoie l'échéance d'identifiant id.
@@ -191,6 +197,7 @@ func Default() Config {
 		Upstream:     "",
 		AdminPath:    "/_smartguard",
 		AdminUser:    "admin",
+		ClientUser:   "client",
 	}
 }
 
@@ -281,6 +288,9 @@ func normalizeConfig(c *Config) {
 	c.AdminPath = strings.TrimRight(c.AdminPath, "/")
 	if c.AdminUser == "" {
 		c.AdminUser = "admin"
+	}
+	if c.ClientUser = strings.TrimSpace(c.ClientUser); c.ClientUser == "" {
+		c.ClientUser = "client"
 	}
 }
 
@@ -433,6 +443,9 @@ func Validate(c Config) error {
 	}
 	if c.ReportEnabled && c.ReportURL == "" {
 		return fmt.Errorf("renseignez l'adresse de signalement pour activer le lien « Signaler un problème »")
+	}
+	if strings.EqualFold(c.ClientUser, c.AdminUser) {
+		return fmt.Errorf("l'identifiant de l'accès client doit être différent de celui du technicien")
 	}
 	if c.Enabled && len(c.Deadlines) == 0 {
 		return fmt.Errorf("ajoutez au moins une échéance avant d'activer le module")
