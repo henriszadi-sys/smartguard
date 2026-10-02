@@ -13,3 +13,6 @@
 *.sum text eol=lf
 *.html text eol=lf
 *.js text eol=lf
+*.xlsx binary
+*.docx binary
+*.pptx binary
