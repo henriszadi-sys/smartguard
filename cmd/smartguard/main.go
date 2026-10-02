@@ -133,7 +133,7 @@ Commandes :
   status         afficher l'état du décompte
   check          diagnostic : configuration, port, application
   license [activate <clé> | deactivate]   licence SmartGUARD du serveur (exigée pour installer)
-  set-password   définir le mot de passe administrateur
+  set-password [client]   mot de passe du technicien, ou de l'accès client (consultation et réactivation)
 
 Options :
   -config <fichier>   fichier de configuration (défaut : config.json à côté de l'exécutable)
@@ -260,23 +260,44 @@ func main() {
 	case "license":
 		runLicense(lic, logger, flag.Args()[1:])
 	case "set-password":
+		// set-password : technicien ; set-password client : accès client (consultation et réactivation).
+		forClient := flag.Arg(1) == "client"
+		who, user := "technicien", c.AdminUser
+		if forClient {
+			who, user = "accès client", c.ClientUser
+		}
 		pw := os.Getenv("SMARTGUARD_PASSWORD")
 		if pw == "" {
-			fmt.Print("Nouveau mot de passe administrateur (8 caractères min.) : ")
+			fmt.Printf("Nouveau mot de passe %s (8 caractères min.) : ", who)
 			pw, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 			pw = strings.TrimRight(pw, "\r\n")
 		}
 		if len(pw) < 8 {
 			log.Fatal("mot de passe trop court")
 		}
+		other := c.ClientPasswordHash
+		if forClient {
+			other = c.AdminPasswordHash
+		}
+		if other != "" && config.CheckPassword(other, pw) {
+			log.Fatal("les mots de passe du technicien et de l'accès client doivent être différents")
+		}
 		h, err := config.HashPassword(pw)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if err := store.UpdateConfig(func(x *config.Config) error { x.AdminPasswordHash = h; return nil }); err != nil {
+		if err := store.UpdateConfig(func(x *config.Config) error {
+			if forClient {
+				x.ClientPasswordHash = h
+			} else {
+				x.AdminPasswordHash = h
+			}
+			return nil
+		}); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Mot de passe enregistré. Utilisateur : %s\n", c.AdminUser)
+		logger.Printf("Mot de passe %s modifié (ligne de commande)", who)
+		fmt.Printf("Mot de passe enregistré. Utilisateur : %s\n", user)
 	default:
 		usage()
 		os.Exit(2)

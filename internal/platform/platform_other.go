@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -98,4 +99,15 @@ func PauseConsole()                         {}
 func ServiceDiagnostics(name string) string {
 	out, _ := exec.Command("systemctl", "status", name, "--no-pager", "-n", "5").CombinedOutput()
 	return "• État du service :\n" + strings.TrimSpace(string(out)) + "\n"
+}
+
+// CheckSystem vérifie le système minimal : Linux avec systemd.
+func CheckSystem() (bool, string) {
+	if runtime.GOOS != "linux" {
+		return false, runtime.GOOS + " : système non pris en charge (Windows 10 / Windows Server 2016 ou Linux avec systemd)"
+	}
+	if fi, err := os.Stat("/run/systemd/system"); err != nil || !fi.IsDir() {
+		return false, "Linux sans systemd : systemd est requis pour faire fonctionner le module comme service"
+	}
+	return true, "Linux avec systemd"
 }

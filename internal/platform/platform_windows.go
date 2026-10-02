@@ -143,3 +143,14 @@ func ServiceDiagnostics(name string) string {
 	}
 	return res
 }
+
+// CheckSystem vérifie le système minimal : Windows 10 ou Windows Server 2016
+// (noyau Windows 10.0). Renvoie aussi un libellé lisible du système.
+func CheckSystem() (bool, string) {
+	v := windows.RtlGetVersion()
+	label := fmt.Sprintf("Windows %d.%d (build %d)", v.MajorVersion, v.MinorVersion, v.BuildNumber)
+	if v.MajorVersion < 10 {
+		return false, label + " : Windows 10 ou Windows Server 2016 minimum requis"
+	}
+	return true, label
+}

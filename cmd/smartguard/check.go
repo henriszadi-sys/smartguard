@@ -8,6 +8,7 @@ import (
 
 	"smartguard/internal/config"
 	"smartguard/internal/logging"
+	"smartguard/internal/platform"
 	"smartguard/internal/version"
 	"smartguard/internal/wizard"
 )
@@ -20,6 +21,11 @@ func runCheck(cfgPath string) int {
 	ko := func(msg string, a ...any) { bad++; fmt.Printf("[PROBLÈME] "+msg+"\n", a...) }
 
 	fmt.Printf("Diagnostic SmartGUARD v%s\nConfiguration : %s\n\n", version.Number, cfgPath)
+	if sysOK, label := platform.CheckSystem(); sysOK {
+		ok("système : %s", label)
+	} else {
+		ko("système : %s", label)
+	}
 	if _, err := os.Stat(cfgPath); err != nil {
 		ko("fichier de configuration introuvable : %v", err)
 		return 1
@@ -42,7 +48,12 @@ func runCheck(cfgPath string) int {
 	if c.AdminPasswordHash == "" {
 		ko("aucun mot de passe administrateur défini")
 	} else {
-		ok("mot de passe administrateur défini")
+		ok("mot de passe du technicien défini")
+	}
+	if c.ClientPasswordHash == "" {
+		ok("accès client désactivé (le technicien peut le créer)")
+	} else {
+		ok("accès client « %s » actif (consultation et réactivation)", c.ClientUser)
 	}
 
 	// Port d'écoute

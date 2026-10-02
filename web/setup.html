@@ -178,7 +178,9 @@ function render(){
 
 function renderHome(c){
   var list = info.installs;
+  var sys = info.system || {ok:true, label:''};
   c.innerHTML = '<h1>Bienvenue</h1><p class="lead">Cet assistant installe le module de rappel d\u2019expiration sur ce serveur ('+esc(info.hostname)+') en quelques étapes.</p>' +
+    (sys.ok ? '<p class="hint">Système : '+esc(sys.label)+' — pris en charge.</p>' : '<div class="error">Système non pris en charge : '+esc(sys.label)+'. SmartGUARD demande Windows 10, Windows Server 2016 ou plus récent, ou Linux avec systemd.</div>') +
     (list.length ? '<h3 style="margin:0 0 10px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Modules installés</h3><div class="installs">' + list.map(function(x,i){
       var days = !x.end_date ? '' : (x.level==='expired' ? '<span class="days expired">expiré</span>' : '<span class="days '+x.level+'">'+x.days_left+' j restants</span>');
       return '<div class="inst"><div><h3>'+esc(x.name)+'</h3><p>'+esc(x.software_name||'')+' · fin le '+fr(x.end_date)+' · '+days+'</p><p>Service '+esc(x.status)+' · '+(x.enabled?'activé':'désactivé')+' · port '+x.port+'</p></div>' +
@@ -395,7 +397,7 @@ function validateStep(){
   if (step===0){ if(!d.software_name.trim()) return 'Indiquez le nom du logiciel.'; if(!slug(d.module_name)) return 'Indiquez le nom du module (lettres, chiffres, tirets).'; }
   if (step===1){ if(!d.end_date) return 'Indiquez la date de fin du contrat.'; if(d.start_date && d.end_date<d.start_date) return 'La date de fin doit être après la date de début.'; if(!(d.warning_days>0)) return 'Le début du décompte doit être un nombre de jours.'; }
   if (step===2){ if(!(d.port>0 && d.port<65536)) return 'Port invalide.'; if(d._portOk===false) return 'Ce port est déjà utilisé : choisissez-en un autre (ex. 8090).'; if(d.mode==='proxy' && !/^https?:\/\/[^\/]+/.test(d.upstream)) return 'Indiquez l\u2019adresse de l\u2019application, ex. http://127.0.0.1:8081'; }
-  if (step===4){ var ls=(info.license||{}).state; if(ls!=='active' && !d.existing && !d.license_key) return 'Saisissez la clé de licence SmartGUARD de ce serveur : sans licence valide, le module ne s\u2019installe pas.'; if(ls==='other_machine' && !d.existing) return 'La licence enregistrée est liée à un autre serveur : désactivez-la d\u2019abord.';
+  if (step===4){ if(info.system && !info.system.ok) return 'Système non pris en charge : '+info.system.label; var ls=(info.license||{}).state; if(ls!=='active' && !d.existing && !d.license_key) return 'Saisissez la clé de licence SmartGUARD de ce serveur : sans licence valide, le module ne s\u2019installe pas.'; if(ls==='other_machine' && !d.existing) return 'La licence enregistrée est liée à un autre serveur : désactivez-la d\u2019abord.';
     if(!d.existing || d.password){ if(d.password.length<8) return 'Le mot de passe doit contenir au moins 8 caractères.'; if(d.password!==d.password2) return 'Les deux mots de passe ne correspondent pas.'; } if(!d.install_dir.trim()) return 'Indiquez le dossier d\u2019installation.'; }
   return '';
 }
