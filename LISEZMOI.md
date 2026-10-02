@@ -32,7 +32,7 @@ L'assistant et la commande `check` vérifient le système ; sur un système non 
 | 2. Échéance | Type (contrat de support, licence, abonnement) et libellé, date de début, date de fin (avec l'option « Arrêter l'application à la date de fin »), début du décompte (30 jours par défaut), activation. Un aperçu du message s'affiche. Les autres échéances s'ajoutent ensuite dans l'administration |
 | 3. Affichage | **Automatique** (le module ajoute le message aux pages de l'application, bouton « Tester ») ou **par une ligne de code** |
 | 4. À l'arrêt | Services à arrêter (cochés dans la liste des services du serveur), adresses à bloquer, scripts à exécuter |
-| 5. Sécurité | Licence SmartGUARD du serveur (si elle n'est pas encore active), mot de passe du technicien, dossier d'installation, raccourci sur le bureau |
+| 5. Sécurité | Licence SmartGUARD du serveur (si elle n'est pas encore active), mot de passe du technicien, option « Administration en HTTPS », dossier d'installation, raccourci sur le bureau |
 | 6. Récapitulatif | Vérification, puis **Installer** |
 
 À la fin, l'assistant indique l'adresse de la page d'administration et, en mode « ligne de code », la ligne à ajouter dans l'application.
@@ -115,6 +115,7 @@ Lancez la nouvelle version de l'assistant sur le serveur : les modules installé
 ## Sécurité
 
 - L'assistant n'est accessible qu'avec le lien secret affiché dans sa fenêtre.
+- **HTTPS** (option de l'étape 5, décochée par défaut) : un certificat auto-signé est créé pour le serveur ; le navigateur affiche un avertissement à accepter une fois. En mode automatique, l'application passe aussi en https sur le port du module. Le certificat peut être remplacé par celui du client (`tls_cert` et `tls_key` dans `config.json`).
 - Les mots de passe sont stockés hachés, de façon irréversible.
 - L'accès est bloqué après 10 échecs de mot de passe.
 - Les clés de licence et les mots de passe n'apparaissent jamais en clair dans les journaux.

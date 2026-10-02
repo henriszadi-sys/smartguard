@@ -6,7 +6,7 @@ Anciennement nommé **LicGuard** : ne plus utiliser ce nom dans le code, les fic
 
 ## Documents de référence
 
-- `Cahier_des_charges_SmartGUARD.md` (**v1.19**) : spécification fonctionnelle. Elle fait foi. Les décisions de la section 16 marquées *à valider* sont des propositions : les suivre par défaut mais les isoler (configuration, paramètres) pour pouvoir les changer.
+- `Cahier_des_charges_SmartGUARD.md` (**v1.20**) : spécification fonctionnelle. Elle fait foi. Les décisions de la section 16 marquées *à valider* sont des propositions : les suivre par défaut mais les isoler (configuration, paramètres) pour pouvoir les changer.
 - `docs/Plan_de_developpement_SmartGUARD.md` : découpage en lots, critères d'acceptation couverts, suivi.
 - `docs/Etat_des_lieux_depot_SmartGUARD.md` : ce que le code v1.6.0 couvrait au départ et les écarts avec le cahier des charges.
 - `EMISSION_CLES.md` : émission des licences SmartGUARD par l'éditeur (ne pas livrer aux clients).
@@ -117,7 +117,8 @@ Passer `internal/version` et le titre de `LISEZMOI.md` à la nouvelle version av
 - L'assistant d'installation n'est accessible que par le lien secret affiché par le programme.
 - Identifiant d'administration `admin` ; blocage après **10 échecs** de mot de passe.
 - Scripts : exécutés uniquement depuis l'administration authentifiée, délai maximum, 3 tentatives, échec journalisé.
-- HTTPS pour l'administration (certificat auto-signé par défaut, remplaçable).
+- HTTPS pour l'administration : option « Administration en HTTPS » de l'assistant, décochée par défaut ; cochée, certificat auto-signé créé dans `tls/` du module (`internal/wizard/tlscert.go`), remplaçable par celui du client via `tls_cert` / `tls_key`. Même port pour l'administration et l'application (mode automatique) : l'application passe aussi en https.
+- Accès à l'administration : technicien (`admin`, tous les réglages) et accès client optionnel (`client`, consultation et réactivation ; 403 sur tout réglage). Sauvegarde : export sans mot de passe, import limité aux réglages fonctionnels, copie automatique avant chaque mise à jour (`sauvegardes/`).
 - SmartGUARD est un outil de rappel et d'application du contrat, **pas une protection anti-piratage** : ne pas promettre le contraire dans l'interface ni la documentation.
 - Ne jamais écrire de secrets (mots de passe, clés de licence, clés privées, jetons) dans les journaux ni dans le dépôt.
 
