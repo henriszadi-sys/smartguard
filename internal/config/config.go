@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -78,6 +79,10 @@ type Config struct {
 	Enabled         bool       `json:"enabled"`          // activer / désactiver le module
 	Deadlines       []Deadline `json:"deadlines"`        // échéances suivies
 
+	// Lien « Signaler un problème » dans les pages de l'application (désactivé par défaut).
+	ReportEnabled bool   `json:"report_enabled"`
+	ReportURL     string `json:"report_url"` // adresse de signalement (espace client), http(s)
+
 	// Ancien format (v1.6, une seule échéance) : lu puis repris dans Deadlines et vidé.
 	StartDate      string   `json:"start_date,omitempty"`
 	EndDate        string   `json:"end_date,omitempty"`
@@ -112,8 +117,9 @@ func (c Config) Deadline(id string) (Deadline, bool) {
 
 // ActionRecord : exécution des actions d'une échéance.
 type ActionRecord struct {
-	DoneAt time.Time `json:"done_at"`
-	For    string    `json:"for"` // date de fin concernée
+	DoneAt     time.Time `json:"done_at"`
+	For        string    `json:"for"`                  // date de fin concernée
+	RestoredAt time.Time `json:"restored_at,omitzero"` // dernière réactivation explicite des services
 }
 
 // State : état interne persistant (non modifiable via l'interface).
@@ -124,6 +130,16 @@ type State struct {
 	// Ancien format (v1.6) : repris dans Actions puis vidé.
 	ActionsDoneAt time.Time `json:"actions_done_at,omitzero"`
 	ActionsFor    string    `json:"actions_for,omitempty"`
+}
+
+// MarkRestored mémorise la réactivation explicite des services d'une échéance.
+func (st *State) MarkRestored(id string, at time.Time) {
+	r, ok := st.Actions[id]
+	if !ok {
+		return
+	}
+	r.RestoredAt = at
+	st.Actions[id] = r
 }
 
 // Done indique si les actions de l'échéance d ont déjà été exécutées pour sa date de fin.
@@ -255,6 +271,7 @@ func normalizeConfig(c *Config) {
 		}
 		normalizeDeadline(d)
 	}
+	c.ReportURL = strings.TrimSpace(c.ReportURL)
 	if c.AdminPath == "" {
 		c.AdminPath = "/_smartguard"
 	}
@@ -408,6 +425,14 @@ func Validate(c Config) error {
 			return fmt.Errorf("identifiant d'échéance en double : %s", d.ID)
 		}
 		ids[d.ID] = true
+	}
+	if c.ReportURL != "" {
+		if u, err := url.Parse(c.ReportURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("adresse de signalement invalide (ex. https://portail.exemple.ci/signaler)")
+		}
+	}
+	if c.ReportEnabled && c.ReportURL == "" {
+		return fmt.Errorf("renseignez l'adresse de signalement pour activer le lien « Signaler un problème »")
 	}
 	if c.Enabled && len(c.Deadlines) == 0 {
 		return fmt.Errorf("ajoutez au moins une échéance avant d'activer le module")

@@ -12,14 +12,18 @@
   .icon{width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent);color:#fff;font-size:34px;line-height:64px;font-weight:700}
   h1{margin:0 0 12px;font-size:24px;color:var(--accent)}
   p{margin:8px 0}.muted{color:var(--muted);font-size:14px}
+  .tag{display:inline-block;margin:0 0 10px;padding:2px 10px;border-radius:99px;border:1px solid var(--accent);color:var(--accent);font-size:13px;font-weight:600}
+  .report{display:inline-block;margin-top:14px;padding:9px 16px;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;text-decoration:none}
 </style>
 </head>
 <body>
 <div class="card">
   <div class="icon">!</div>
   <h1>{{.SoftwareName}} — accès suspendu</h1>
+  {{if .BlockedBy}}<div class="tag">Échéance : {{.BlockedBy}}</div>{{end}}
   <p>{{.Message}}</p>
   {{if .Contact}}<p class="muted">Fournisseur : {{.Contact}}</p>{{end}}
+  {{if .ReportURL}}<a class="report" href="{{.ReportURL}}" target="_blank" rel="noopener">Signaler un problème</a>{{end}}
   <p class="muted">{{.ModuleName}}</p>
 </div>
 </body>

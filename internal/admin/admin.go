@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -61,8 +62,8 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		st := s.status(c)
-		if scheduler.Blocks(c, st, r.Host, r.URL.Path) {
-			proxy.RenderExpired(w, st)
+		if ds, ok := scheduler.BlockingDeadline(c, st, r.Host, r.URL.Path); ok {
+			proxy.RenderExpired(w, st.ForBlockedPage(ds))
 			return
 		}
 		if s.Proxy == nil {
@@ -91,11 +92,13 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		st := s.status(c)
 		if p := r.URL.Query().Get("page"); p != "" {
 			if pu, err := url.Parse(p); err == nil {
-				st.Blocked = scheduler.Blocks(c, st, pu.Host, pu.Path)
+				if ds, ok := scheduler.BlockingDeadline(c, st, pu.Host, pu.Path); ok {
+					st = st.ForBlockedPage(ds)
+				}
 			}
 		}
 		st.Contact = c.SupplierContact
-		WriteJSON(w, st)
+		WriteJSON(w, st.Public())
 	case "/login":
 		s.handleLogin(w, r, c)
 	case "/logout":
@@ -120,11 +123,7 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		if !s.auth(w, r) || !postOnly(w, r) {
 			return
 		}
-		ds, still := s.restorable(c)
-		if s.Restore != nil && len(ds) > 0 {
-			s.Restore(ds)
-		}
-		WriteJSON(w, map[string]any{"ok": true, "restored": len(ds), "still_stopped": still})
+		s.apiRestore(w, r, c)
 	case "/api/license":
 		if !s.auth(w, r) {
 			return
@@ -171,6 +170,7 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			x.SupplierContact = strings.TrimSpace(in.SupplierContact)
 			x.Enabled = in.Enabled
 			x.Deadlines = in.Deadlines
+			x.ReportEnabled, x.ReportURL = in.ReportEnabled, in.ReportURL
 			if x.ModuleName == "" {
 				x.ModuleName = "SmartGUARD"
 			}
@@ -260,19 +260,70 @@ func (s *Server) apiLicense(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// restorable renvoie les échéances dont les services peuvent être relancés
-// (échéances non arrêtées, c'est-à-dire renouvelées ou sans arrêt) et le
-// nombre d'échéances encore arrêtées, dont les services restent arrêtés.
+// apiRestore réactive les services de toutes les échéances qui ne sont plus
+// arrêtées, ou d'une seule échéance si son identifiant est indiqué.
+func (s *Server) apiRestore(w http.ResponseWriter, r *http.Request, c config.Config) {
+	var in struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in)
+	st := s.status(c)
+	var ds []config.Deadline
+	still := 0
+	if in.ID == "" {
+		ds, still = s.restorable(c)
+	} else {
+		i := slices.IndexFunc(c.Deadlines, func(d config.Deadline) bool { return d.ID == in.ID })
+		if i < 0 {
+			jsonError(w, "échéance introuvable")
+			return
+		}
+		d, dst := c.Deadlines[i], st.Deadlines[i]
+		switch {
+		case dst.Stopped && c.Enabled:
+			jsonError(w, fmt.Sprintf("l'échéance « %s » est encore arrêtée : enregistrez d'abord la nouvelle date de fin", d.Name()))
+			return
+		case len(d.Services) == 0:
+			jsonError(w, fmt.Sprintf("aucun service à relancer pour l'échéance « %s »", d.Name()))
+			return
+		case dst.ActionsDoneAt == "":
+			jsonError(w, fmt.Sprintf("aucun arrêt n'a été exécuté pour l'échéance « %s » : rien à réactiver", d.Name()))
+			return
+		}
+		ds = []config.Deadline{d}
+	}
+	if s.Restore != nil && len(ds) > 0 {
+		s.Restore(ds)
+	}
+	now := s.now()
+	s.Store.UpdateState(func(st *config.State) {
+		for _, d := range ds {
+			st.MarkRestored(d.ID, now)
+		}
+	})
+	WriteJSON(w, map[string]any{"ok": true, "restored": len(ds), "still_stopped": still})
+}
+
+func jsonError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// restorable renvoie les échéances dont SmartGUARD a arrêté les services et qui
+// peuvent être réactivées (renouvelées, pas encore réactivées), et le nombre
+// d'échéances encore arrêtées, dont les services restent arrêtés.
 func (s *Server) restorable(c config.Config) ([]config.Deadline, int) {
 	st := s.status(c)
 	var ds []config.Deadline
 	still := 0
 	for i, d := range c.Deadlines {
-		if st.Deadlines[i].Stopped && c.Enabled {
+		switch {
+		case st.Deadlines[i].Stopped && c.Enabled:
 			still++
-			continue
+		case st.Deadlines[i].CanRestore:
+			ds = append(ds, d)
 		}
-		ds = append(ds, d)
 	}
 	return ds, still
 }

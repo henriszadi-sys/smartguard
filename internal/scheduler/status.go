@@ -30,7 +30,10 @@ type DeadlineStatus struct {
 	Message       string `json:"message"`
 	Progress      int    `json:"progress"`
 	ExpiresAt     string `json:"expires_at"`
-	ActionsDoneAt string `json:"actions_done_at,omitempty"` // JJ/MM/AAAA HH:MM
+	ActionsDoneAt string `json:"actions_done_at,omitempty"` // dernier arrêt exécuté, JJ/MM/AAAA HH:MM
+	ActionsFor    string `json:"actions_for,omitempty"`     // date de fin à l'origine de ce dernier arrêt
+	RestoredAt    string `json:"restored_at,omitempty"`     // dernière réactivation des services
+	CanRestore    bool   `json:"can_restore"`               // arrêt passé, échéance renouvelée, services pas encore réactivés
 }
 
 // Status : état du module. Les champs de premier niveau reprennent l'échéance
@@ -56,6 +59,8 @@ type Status struct {
 	Progress     int              `json:"progress"` // % de la période écoulée
 	ExpiresAt    string           `json:"expires_at"`
 	Blocked      bool             `json:"blocked,omitempty"`
+	BlockedBy    string           `json:"blocked_by,omitempty"` // libellé de l'échéance qui bloque la page
+	ReportURL    string           `json:"report_url,omitempty"` // lien « Signaler un problème » (si activé)
 	Deadlines    []DeadlineStatus `json:"deadlines"`
 }
 
@@ -75,6 +80,9 @@ func frDate(t time.Time) string { return t.Format("02/01/2006") }
 func ComputeStatus(c config.Config, st config.State, now time.Time) Status {
 	s := Status{ModuleName: c.ModuleName, SoftwareName: c.SoftwareName, Enabled: c.Enabled,
 		Contact: c.SupplierContact, Level: "ok", Deadlines: []DeadlineStatus{}}
+	if c.ReportEnabled {
+		s.ReportURL = c.ReportURL
+	}
 	best := -1
 	for _, d := range c.Deadlines {
 		ds := ComputeDeadline(c, d, st, now)
@@ -115,8 +123,14 @@ func moreUrgent(a, b DeadlineStatus) bool {
 func ComputeDeadline(c config.Config, d config.Deadline, st config.State, now time.Time) DeadlineStatus {
 	s := DeadlineStatus{ID: d.ID, Kind: d.Kind, KindLabel: config.KindLabel(d.Kind), Label: d.Name(),
 		StartDate: d.StartDate, EndDate: d.EndDate, StopOnEnd: d.StopOnEnd, Level: "ok"}
-	if at, ok := st.Done(d); ok {
-		s.ActionsDoneAt = at.In(time.Local).Format("02/01/2006 15:04")
+	// Dernier arrêt exécuté, conservé après renouvellement pour la réactivation.
+	r, hasRecord := st.Actions[d.ID]
+	if hasRecord && !r.DoneAt.IsZero() {
+		s.ActionsDoneAt = r.DoneAt.In(time.Local).Format("02/01/2006 15:04")
+		s.ActionsFor = r.For
+		if !r.RestoredAt.IsZero() {
+			s.RestoredAt = r.RestoredAt.In(time.Local).Format("02/01/2006 15:04")
+		}
 	}
 	end, err := time.ParseInLocation(config.DateLayout, d.EndDate, time.Local)
 	if err != nil {
@@ -131,6 +145,9 @@ func ComputeDeadline(c config.Config, d config.Deadline, st config.State, now ti
 	s.Expired = !now.Before(stop)
 	// L'arrêt complet a lieu à 00:00 à la date de fin, uniquement si l'option d'arrêt est activée.
 	s.Stopped = s.Expired && d.StopOnEnd
+	// Réactivation proposée : arrêt passé, échéance plus arrêtée (renouvelée ou module
+	// désactivé), services listés et pas encore réactivés depuis cet arrêt.
+	s.CanRestore = hasRecord && !r.DoneAt.IsZero() && !(s.Stopped && c.Enabled) && len(d.Services) > 0 && r.RestoredAt.Before(r.DoneAt)
 
 	if start, err := time.ParseInLocation(config.DateLayout, d.StartDate, time.Local); err == nil && stop.After(start) {
 		p := now.Sub(start).Seconds() / stop.Sub(start).Seconds() * 100
@@ -166,18 +183,47 @@ func ComputeDeadline(c config.Config, d config.Deadline, st config.State, now ti
 // Blocks indique si l'adresse demandée est bloquée par une échéance arrêtée
 // (module activé uniquement).
 func Blocks(c config.Config, s Status, host, path string) bool {
+	_, ok := BlockingDeadline(c, s, host, path)
+	return ok
+}
+
+// BlockingDeadline renvoie l'échéance arrêtée qui bloque l'adresse demandée.
+func BlockingDeadline(c config.Config, s Status, host, path string) (DeadlineStatus, bool) {
 	if !c.Enabled || !s.Stopped {
-		return false
+		return DeadlineStatus{}, false
 	}
 	for _, ds := range s.Deadlines {
 		if !ds.Stopped {
 			continue
 		}
 		if d, ok := c.Deadline(ds.ID); ok && IsBlocked(d.BlockedURLs, host, path) {
-			return true
+			return ds, true
 		}
 	}
-	return false
+	return DeadlineStatus{}, false
+}
+
+// ForBlockedPage adapte l'état à la page bloquée : message et libellé de
+// l'échéance à l'origine du blocage.
+func (s Status) ForBlockedPage(ds DeadlineStatus) Status {
+	s.Blocked, s.BlockedBy = true, ds.Label
+	s.DeadlineID, s.Kind, s.Label, s.Message = ds.ID, ds.Kind, ds.Label, ds.Message
+	s.EndDate, s.Level, s.Expired, s.DaysLeft = ds.EndDate, ds.Level, ds.Expired, ds.DaysLeft
+	return s
+}
+
+// Public renvoie l'état publié aux pages de l'application (bandeau) : sans
+// détail d'exécution des actions, avec les seules échéances à afficher.
+func (s Status) Public() Status {
+	pub := s
+	pub.Deadlines = []DeadlineStatus{}
+	for _, d := range s.Deadlines {
+		if d.Show {
+			d.ActionsDoneAt, d.ActionsFor, d.RestoredAt, d.CanRestore = "", "", "", false
+			pub.Deadlines = append(pub.Deadlines, d)
+		}
+	}
+	return pub
 }
 
 // IsBlocked indique si l'URL demandée correspond à l'un des motifs à bloquer.

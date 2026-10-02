@@ -192,3 +192,22 @@ func TestNormalizeDeadlines(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateReportLink(t *testing.T) {
+	c := Default()
+	if c.ReportEnabled {
+		t.Fatal("le lien « Signaler un problème » doit être désactivé par défaut")
+	}
+	c.ReportEnabled = true
+	if Validate(c) == nil {
+		t.Error("lien activé sans adresse accepté")
+	}
+	c.ReportURL = "javascript:alert(1)"
+	if Validate(c) == nil {
+		t.Error("adresse non http(s) acceptée")
+	}
+	c.ReportURL = "https://portail.exemple.ci/signaler"
+	if err := Validate(c); err != nil {
+		t.Errorf("adresse valide refusée : %v", err)
+	}
+}

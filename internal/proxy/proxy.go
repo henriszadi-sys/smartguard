@@ -67,7 +67,7 @@ func (p *Proxy) injectBanner(resp *http.Response) error {
 		}
 	}
 	c := p.store.Config()
-	if !c.Enabled {
+	if !c.Enabled && !c.ReportEnabled { // ni rappel ni lien « Signaler un problème »
 		return nil
 	}
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))

@@ -81,6 +81,10 @@ func TestProtectedAPIRequiresSessionAndHeader(t *testing.T) {
 
 	restored := 0
 	s.Now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
+	// Arrêt exécuté pour une échéance précédente, depuis renouvelée.
+	s.Store.UpdateState(func(st *config.State) {
+		st.Actions = map[string]config.ActionRecord{"d1": {DoneAt: time.Date(2025, 10, 5, 0, 0, 5, 0, time.Local), For: "2025-10-05"}}
+	})
 	s.Restore = func([]config.Deadline) { restored++ }
 	post := func(withHeader bool) int {
 		r := httptest.NewRequest(http.MethodPost, "/_smartguard/api/restore", nil)
@@ -136,6 +140,9 @@ func TestRestoreSkipsStillStoppedDeadlines(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	s.Store.UpdateState(func(st *config.State) {
+		st.Actions = map[string]config.ActionRecord{"d2": {DoneAt: time.Date(2026, 1, 1, 0, 0, 5, 0, time.Local), For: "2026-01-01"}}
+	})
 	ds, still := s.restorable(s.Store.Config())
 	if still != 1 || len(ds) != 1 || ds[0].Services[0] != "paie" {
 		t.Fatalf("réactivation : %+v, encore arrêtées %d", ds, still)
@@ -170,5 +177,95 @@ func TestConfigAPISavesDeadlines(t *testing.T) {
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest || len(s.Store.Config().Deadlines) != 2 {
 		t.Fatalf("échéance sans date de fin : code %d", w.Code)
+	}
+}
+
+// Réactivation d'une échéance précise : refusée tant qu'elle est arrêtée,
+// acceptée après renouvellement, et mémorisée.
+func TestRestoreSingleDeadline(t *testing.T) {
+	s := newServer(t)
+	now := time.Date(2026, 10, 6, 9, 0, 0, 0, time.Local)
+	s.Now = func() time.Time { return now }
+	var got []string
+	s.Restore = func(ds []config.Deadline) {
+		for _, d := range ds {
+			got = append(got, d.ID)
+		}
+	}
+	if err := s.Store.UpdateConfig(func(c *config.Config) error {
+		c.Deadlines = append(c.Deadlines, config.Deadline{Kind: config.KindLicence, EndDate: "2027-01-01", StopOnEnd: true, Services: []string{"paie"}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Actions de d1 exécutées à l'échéance.
+	s.Store.UpdateState(func(st *config.State) {
+		st.Actions = map[string]config.ActionRecord{"d1": {DoneAt: time.Date(2026, 10, 5, 0, 0, 5, 0, time.Local), For: "2026-10-05"}}
+	})
+	cookie := login(s, "motdepasse1").Result().Cookies()[0]
+	post := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/_smartguard/api/restore", strings.NewReader(body))
+		r.AddCookie(cookie)
+		r.Header.Set("X-SmartGUARD", "1")
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	if w := post(`{"id":"d1"}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "encore arrêtée") || len(got) != 0 {
+		t.Fatalf("échéance arrêtée : code %d %s, réactivées %v", w.Code, w.Body.String(), got)
+	}
+	if w := post(`{"id":"inconnue"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("échéance inconnue : code %d", w.Code)
+	}
+	if w := post(`{"id":"d2"}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "aucun arrêt") {
+		t.Fatalf("échéance jamais arrêtée : code %d %s", w.Code, w.Body.String())
+	}
+	// Renouvellement de d1 puis réactivation de d1 seule.
+	if err := s.Store.UpdateConfig(func(c *config.Config) error { c.Deadlines[0].EndDate = "2027-10-05"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if w := post(`{"id":"d1"}`); w.Code != http.StatusOK || len(got) != 1 || got[0] != "d1" {
+		t.Fatalf("réactivation de d1 : code %d, réactivées %v", w.Code, got)
+	}
+	if r := s.Store.State().Actions["d1"]; !r.RestoredAt.Equal(now) {
+		t.Fatalf("réactivation non mémorisée : %+v", r)
+	}
+	// Réactivation globale ensuite : plus rien à relancer (d1 déjà réactivée, d2 jamais arrêtée).
+	if w := post(`{}`); w.Code != http.StatusOK || len(got) != 1 || !strings.Contains(w.Body.String(), `"restored":0`) {
+		t.Fatalf("réactivation globale : code %d %s, réactivées %v", w.Code, w.Body.String(), got)
+	}
+}
+
+// Page bloquée : le message et le libellé sont ceux de l'échéance à l'origine du blocage ;
+// l'état public ne contient pas le détail des actions.
+func TestBlockedPageNamesDeadline(t *testing.T) {
+	s := newServer(t)
+	s.Now = func() time.Time { return time.Date(2026, 10, 6, 9, 0, 0, 0, time.Local) }
+	if err := s.Store.UpdateConfig(func(c *config.Config) error {
+		c.Deadlines[0].BlockedURLs = []string{"/kelio"}
+		c.Deadlines[0].Label = "Maintenance Kelio"
+		c.Deadlines = append(c.Deadlines, config.Deadline{Kind: config.KindLicence, Label: "Licence paie", EndDate: "2026-10-01", StopOnEnd: true, BlockedURLs: []string{"/paie"}})
+		c.ReportEnabled, c.ReportURL = true, "https://portail.exemple.ci/signaler"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/paie/bulletins", nil))
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "Licence paie") || !strings.Contains(w.Body.String(), "a expiré le 01/10/2026") {
+		t.Fatalf("page bloquée par la licence : code %d\n%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "https://portail.exemple.ci/signaler") {
+		t.Fatal("lien « Signaler un problème » absent de la page bloquée")
+	}
+	r := httptest.NewRequest(http.MethodGet, "/_smartguard/api/status?page="+url.QueryEscape("http://srv/kelio/accueil"), nil)
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	body := w.Body.String()
+	if !strings.Contains(body, `"blocked_by":"Maintenance Kelio"`) || !strings.Contains(body, `"report_url":"https://portail.exemple.ci/signaler"`) {
+		t.Fatalf("état public : %s", body)
+	}
+	if strings.Contains(body, "actions_done_at") || strings.Contains(body, "restored_at") {
+		t.Fatalf("détail des actions publié : %s", body)
 	}
 }

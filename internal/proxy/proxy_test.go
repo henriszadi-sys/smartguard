@@ -67,6 +67,16 @@ func TestInjectsBannerAndRewritesRedirects(t *testing.T) {
 	if body := get(t, cl, front.URL+"/"); strings.Contains(body, "banner.js") {
 		t.Fatal("module désactivé : bandeau injecté")
 	}
+	// Module désactivé mais lien « Signaler un problème » activé : le script reste injecté.
+	if err := st.UpdateConfig(func(c *config.Config) error {
+		c.ReportEnabled, c.ReportURL = true, "https://portail.exemple.ci/signaler"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, cl, front.URL+"/"); !strings.Contains(body, "banner.js") {
+		t.Fatal("lien « Signaler un problème » activé : script non injecté")
+	}
 }
 
 func get(t *testing.T, cl *http.Client, url string) string {

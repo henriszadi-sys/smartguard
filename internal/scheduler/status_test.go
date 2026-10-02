@@ -213,3 +213,23 @@ func TestBlocksOnlyStoppedDeadlines(t *testing.T) {
 		t.Fatal("module désactivé : adresse bloquée")
 	}
 }
+
+// Après renouvellement, le dernier arrêt reste visible et la réactivation est proposée
+// jusqu'à ce qu'elle soit faite.
+func TestRestoreOfferedAfterRenewal(t *testing.T) {
+	c := cfg("2026-10-05")
+	c.Deadlines[0].StopOnEnd, c.Deadlines[0].Services = true, []string{"kelio"}
+	st := config.State{Actions: map[string]config.ActionRecord{"d1": {DoneAt: at("2026-10-05 00:00:10"), For: "2026-10-05"}}}
+	if d := ComputeStatus(c, st, at("2026-10-06 09:00:00")).Deadlines[0]; d.CanRestore || d.ActionsDoneAt == "" {
+		t.Fatalf("échéance encore arrêtée : %+v", d)
+	}
+	c.Deadlines[0].EndDate = "2027-10-05"
+	d := ComputeStatus(c, st, at("2026-10-06 09:00:00")).Deadlines[0]
+	if !d.CanRestore || d.ActionsFor != "2026-10-05" {
+		t.Fatalf("réactivation non proposée après renouvellement : %+v", d)
+	}
+	st.MarkRestored("d1", at("2026-10-06 09:05:00"))
+	if d := ComputeStatus(c, st, at("2026-10-06 09:10:00")).Deadlines[0]; d.CanRestore || d.RestoredAt == "" {
+		t.Fatalf("réactivation déjà faite : %+v", d)
+	}
+}
