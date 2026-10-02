@@ -55,7 +55,7 @@ Relancez l'assistant (`SmartGUARD-Setup.exe` ou le programme installé). L'écra
 
 - **Modifier** reprend les 6 étapes avec les valeurs actuelles (la première échéance ; les autres sont conservées). Changer le nom du module renomme le service. **Une sauvegarde de la configuration est faite automatiquement** avant chaque mise à jour, dans le dossier `sauvegardes` du module (10 dernières conservées).
 - **Administration** ouvre la page web de gestion.
-- **Désinstaller** supprime le service et la règle de pare-feu ; la licence du serveur reste active pour les autres modules.
+- **Désinstaller** supprime le service, la règle de pare-feu et les fichiers du module ; la licence du serveur reste active pour les autres modules.
 
 Plusieurs modules peuvent être installés sur un même serveur, un par logiciel surveillé, chacun sur son propre port.
 
