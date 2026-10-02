@@ -2,7 +2,7 @@
 
 | Version | Date | Référence |
 |---|---|---|
-| 1.5 | 2 octobre 2026 | Cahier des charges v1.19, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0 ; v1.4 : une version du module par lot livré, lots 2 et 3 regroupés ; v1.5 : lot 4 terminé, référence cahier v1.19) |
+| 1.6 | 2 octobre 2026 | Cahier des charges v1.20, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0 ; v1.4 : une version du module par lot livré, lots 2 et 3 regroupés ; v1.5 : lot 4 terminé, référence cahier v1.19 ; v1.6 : code du lot 5 terminé, cahier v1.20) |
 
 *Document de pilotage du développement. Le cahier des charges fait foi en cas de désaccord.*
 
@@ -52,7 +52,7 @@
 
 **Jalons**
 
-- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.10.0 conforme au cahier des charges en vigueur (v1.19), installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
+- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.10.0 conforme au cahier des charges en vigueur (v1.20), installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
 - **Jalon B (lots 6 et 7)** : portail en ligne, accès de base et abonnements. Mise en service commerciale (après la vérification ARTCI).
 - **Jalon C (lot 8)** : options espace client et application mobile.
 
@@ -209,7 +209,7 @@ Les noms de produits sont des exemples ; le choix final reste ouvert. La colonne
 | 2 | Terminé avec le lot 3 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Bandeau multi-échéances, lien « Signaler un problème » désactivé par défaut ; tests Windows et Linux ; vérifié dans un navigateur |
 | 3 | Terminé avec le lot 2 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Page « accès suspendu » nommant l'échéance, réactivation par échéance limitée aux services arrêtés par SmartGUARD ; tests Windows et Linux |
 | 4 | Terminé (v1.9.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Licence par serveur ; installation refusée sans licence (assistant et commande `install`), mise à jour signalée (point 39) ; licences signées par l'éditeur, paire de clés créée (point 40) ; tests Windows et Linux ; assistant vérifié dans un navigateur |
-| 5 | À faire | | | |
+| 5 | Code terminé (v1.10.0, publié sur `main`) ; reste : tests d'installation sur machines réelles et recette du jalon A, par le développeur | 2 oct. 2026 | | Accès technicien / client, sauvegarde (export, import, copie avant mise à jour), contrôle Windows 10 / Server 2016 ou Linux systemd, HTTPS en option (certificat auto-signé), LISEZMOI ; tests Windows et Linux ; administration vérifiée dans un navigateur |
 | 6 | À faire | | | |
 | 7 | À faire | | | |
 | 8a | À faire | | | |
