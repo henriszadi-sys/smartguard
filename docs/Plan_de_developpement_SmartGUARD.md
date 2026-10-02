@@ -206,8 +206,8 @@ Les noms de produits sont des exemples ; le choix final reste ouvert. La colonne
 | Recrutement du développeur | À faire (avant le lot 5) | | | |
 | 0 | Terminé (exécutables v1.6 publiés en release GitHub `v1.6.0` le 2 oct. 2026) | 1er oct. 2026 | 1er oct. 2026 | Tests au vert sous Windows et Linux ; dépôt poussé sur GitHub |
 | 1 | Terminé (v1.7.0, publié sur `main`) | 1er oct. 2026 | 2 oct. 2026 | Tests au vert sous Windows et Linux ; migration v1.6 testée ; interface vérifiée dans un navigateur ; validé par Labenie |
-| 2 | Développé avec le lot 3 (v1.8.0, branche `lot-2-3-rappels-arrets`) | 2 oct. 2026 | 2 oct. 2026 | Bandeau multi-échéances, lien « Signaler un problème » désactivé par défaut ; tests Windows et Linux ; vérifié dans un navigateur |
-| 3 | Développé avec le lot 2 (v1.8.0) | 2 oct. 2026 | 2 oct. 2026 | Page « accès suspendu » nommant l'échéance, réactivation par échéance limitée aux services arrêtés par SmartGUARD ; tests Windows et Linux |
+| 2 | Terminé avec le lot 3 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Bandeau multi-échéances, lien « Signaler un problème » désactivé par défaut ; tests Windows et Linux ; vérifié dans un navigateur |
+| 3 | Terminé avec le lot 2 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Page « accès suspendu » nommant l'échéance, réactivation par échéance limitée aux services arrêtés par SmartGUARD ; tests Windows et Linux |
 | 4 | À faire | | | |
 | 5 | À faire | | | |
 | 6 | À faire | | | |
