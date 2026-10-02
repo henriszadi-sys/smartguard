@@ -2,7 +2,7 @@
 
 | Version | Date | Référence |
 |---|---|---|
-| 1.3 | 1er octobre 2026 | Cahier des charges v1.18, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0) |
+| 1.4 | 2 octobre 2026 | Cahier des charges v1.18, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0 ; v1.4 : une version du module par lot livré, lots 2 et 3 regroupés) |
 
 *Document de pilotage du développement. Le cahier des charges fait foi en cas de désaccord.*
 
@@ -14,6 +14,7 @@
 - **Les points encore à valider** (section 16 du cahier des charges) sont développés selon la proposition par défaut, mais isolés dans la configuration pour pouvoir changer sans réécrire le code.
 - **Tout comportement lié aux dates est testé avec une horloge simulée** (échéance à 00:00, J-30, J-7, recul d'horloge, redémarrage, seuils).
 - **Ordre** : d'abord le module installé chez le client (lots 1 à 5), qui fonctionne seul ; ensuite le portail (lots 6 et 7) ; enfin les options (lot 8).
+- **Numérotation** : chaque lot livré du module augmente la version mineure (lot 1 : 1.7.0 ; lots 2-3 : 1.8.0 ; lot 4 : 1.9.0 ; lot 5 : 1.10.0). Le module reste en 1.x jusqu'au jalon A : une version majeure (2.0) est réservée à une mise à niveau facturable, à décider par Labenie.
 - **Écart constaté avec le cahier des charges** : on s'arrête, on le signale à Labenie, puis on met à jour le cahier des charges après sa décision.
 
 ## 1 bis. Organisation et rôles
@@ -40,7 +41,7 @@
 | 2 | Rappels et bandeau pour plusieurs échéances, messages par type, lien « Signaler un problème » (désactivé) | Module | 1 | 3 j |
 | 3 | Option d'arrêt et actions propres à chaque échéance, exécution unique par échéance, réactivation | Module | 1 | 3 j |
 | 4 | Licence SmartGUARD bloquante à l'installation (existant : clés signées, liaison au serveur) | Module | 0 | 3 j |
-| 5 | Rôles technicien du fournisseur / accès client, contrôle Windows 10 / Server 2016, version 1.7.0 | Module | 1 à 4 | 6 j |
+| 5 | Rôles technicien du fournisseur / accès client, contrôle Windows 10 / Server 2016, version 1.10.0 | Module | 1 à 4 | 6 j |
 | 6 | Portail : comptes, rôles, accès de base, abonnements et droits | Portail SaaS | 4 | 10 j |
 | 7 | Portail : enrôlement, signal, alertes, tableau de bord, codes de renouvellement | Portail SaaS | 5, 6 | 15 j |
 | 8a | Espace client : signalements, détection de panne confirmée par le client | Portail + module | 7 | 12 j |
@@ -51,7 +52,7 @@
 
 **Jalons**
 
-- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.7.0 conforme au cahier v1.18, installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
+- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.10.0 conforme au cahier v1.18, installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
 - **Jalon B (lots 6 et 7)** : portail en ligne, accès de base et abonnements. Mise en service commerciale (après la vérification ARTCI).
 - **Jalon C (lot 8)** : options espace client et application mobile.
 
@@ -89,12 +90,12 @@ Les critères (C1 à C31) renvoient à la liste numérotée de la section 15 du 
 - **À faire** : l'assistant refuse d'installer sans licence valide (saisie de la clé à l'installation) ; une fois installé, le module ne s'arrête jamais à cause de la licence ; activation par fichier hors ligne si nécessaire ; renseigner `public.key` (mode signé) avant la première livraison.
 - **Critères couverts** : C3.
 
-### Lot 5 — Rôles, systèmes et version 1.7.0
+### Lot 5 — Rôles, systèmes et version 1.10.0
 
 - **Existant** : compte `admin`, blocage après 10 échecs, HTTPS possible, plusieurs modules par serveur, service Windows / systemd.
-- **À faire** : distinction technicien du fournisseur (réglages réservés : page « accès suspendu », scripts, redémarrage, sauvegardes) et accès client limité (consultation, code de renouvellement, réactivation) ; contrôle des systèmes minimaux (Windows 10 / Server 2016) ; passage en version 1.7.0, documentation `LISEZMOI.md` ; tests d'installation sur machines réelles par le développeur.
+- **À faire** : distinction technicien du fournisseur (réglages réservés : page « accès suspendu », scripts, redémarrage, sauvegardes) et accès client limité (consultation, code de renouvellement, réactivation) ; contrôle des systèmes minimaux (Windows 10 / Server 2016) ; passage en version 1.10.0, documentation `LISEZMOI.md` ; tests d'installation sur machines réelles par le développeur.
 - **Critères couverts** : C1, C2, C6, C7, C13, C14.
-- **Fin du jalon A** : recette complète du module v1.7.0.
+- **Fin du jalon A** : recette complète du module v1.10.0.
 
 ### Lot 6 — Portail : comptes, accès et abonnements
 
@@ -203,10 +204,10 @@ Les noms de produits sont des exemples ; le choix final reste ouvert. La colonne
 | Lot | Statut | Début | Fin | Recette |
 |---|---|---|---|---|
 | Recrutement du développeur | À faire (avant le lot 5) | | | |
-| 0 | Terminé (reste : publier les exécutables v1.6 en « release » GitHub) | 1er oct. 2026 | 1er oct. 2026 | Tests au vert sous Windows et Linux ; dépôt poussé sur GitHub |
-| 1 | Développé — en attente de validation et de push (branche `lot-1-echeances`, v1.7.0) | 1er oct. 2026 | 2 oct. 2026 | Tests au vert sous Windows et Linux ; migration v1.6 testée ; interface vérifiée dans un navigateur |
-| 2 | À faire | | | |
-| 3 | À faire | | | |
+| 0 | Terminé (exécutables v1.6 publiés en release GitHub `v1.6.0` le 2 oct. 2026) | 1er oct. 2026 | 1er oct. 2026 | Tests au vert sous Windows et Linux ; dépôt poussé sur GitHub |
+| 1 | Terminé (v1.7.0, publié sur `main`) | 1er oct. 2026 | 2 oct. 2026 | Tests au vert sous Windows et Linux ; migration v1.6 testée ; interface vérifiée dans un navigateur ; validé par Labenie |
+| 2 | Développé avec le lot 3 (v1.8.0, branche `lot-2-3-rappels-arrets`) | 2 oct. 2026 | 2 oct. 2026 | Bandeau multi-échéances, lien « Signaler un problème » désactivé par défaut ; tests Windows et Linux ; vérifié dans un navigateur |
+| 3 | Développé avec le lot 2 (v1.8.0) | 2 oct. 2026 | 2 oct. 2026 | Page « accès suspendu » nommant l'échéance, réactivation par échéance limitée aux services arrêtés par SmartGUARD ; tests Windows et Linux |
 | 4 | À faire | | | |
 | 5 | À faire | | | |
 | 6 | À faire | | | |
