@@ -121,6 +121,12 @@ button.danger{color:var(--crit)}
       <button type="button" id="add-deadline" style="margin-top:12px">+ Ajouter une échéance</button>
     </fieldset>
 
+    <fieldset><legend>Signalement</legend>
+      <label class="switch"><input type="checkbox" id="report_enabled"> <span><b>Afficher « Signaler un problème » dans l'application</b><br><span class="hint">Lien ajouté aux pages de l'application (mode automatique ou ligne de code) et à la page « accès suspendu ». Désactivé par défaut.</span></span></label>
+      <label for="report_url">Adresse de signalement <span class="hint">— page de l'espace client ou du support (http:// ou https://)</span></label>
+      <input type="text" id="report_url" maxlength="400" placeholder="https://portail.exemple.ci/signaler">
+    </fieldset>
+
     <fieldset><legend>Sécurité</legend>
       <label for="new_password">Nouveau mot de passe administrateur <span class="hint">(laisser vide pour conserver)</span></label>
       <input type="password" id="new_password" autocomplete="new-password" style="max-width:320px">
@@ -137,7 +143,7 @@ button.danger{color:var(--crit)}
 (function(){
   var base = location.pathname.replace(/\/(admin)?\/?$/, '');
   var $ = function(id){ return document.getElementById(id); };
-  var fields = ['module_name','software_name','supplier_contact'];
+  var fields = ['module_name','software_name','supplier_contact','report_url'];
   var LABEL = {ok:'En cours', warning:'Décompte en cours', critical:'Expiration imminente', expired:'Expiré'};
   var KINDS = [['contrat','Contrat de support'],['licence','Licence'],['abonnement','Abonnement']];
   var DEF = {}; // messages par défaut par type
@@ -228,7 +234,7 @@ button.danger{color:var(--crit)}
       '<label for="' + k + '-scr">Commandes / scripts à exécuter <span class="hint">— un par ligne (.bat, .ps1, .sh ou commande)</span></label>' +
       '<textarea id="' + k + '-scr" data-f="scripts" placeholder="C:\\Scripts\\fin-licence.bat">' + esc((x.scripts||[]).join('\n')) + '</textarea>' +
       '<p class="hint" data-done style="margin:10px 0 0"></p>' +
-      '<div style="margin-top:12px"><button type="button" class="small danger" data-remove>Supprimer cette échéance</button></div>' +
+      '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px"><button type="button" class="small" data-restore hidden>Réactiver les services de cette échéance</button><button type="button" class="small danger" data-remove>Supprimer cette échéance</button></div>' +
       '</div></details>';
   }
   function renderDeadlines(){
@@ -240,6 +246,10 @@ button.danger{color:var(--crit)}
       el.querySelector('[data-remove]').addEventListener('click', function(){
         if (!confirm('Supprimer l\u2019échéance « ' + (x.label || kindLabel(x.kind)) + ' » ?\n(la suppression sera effective après « Enregistrer »)')) return;
         collect(); dls = dls.filter(function(y){ return y !== x; }); renderDeadlines(); paintDeadlineStates(last);
+      });
+      el.querySelector('[data-restore]').addEventListener('click', function(){
+        if (!confirm('Réactiver et redémarrer les services de l\u2019échéance « ' + (x.label || kindLabel(x.kind)) + ' » ?\n(après renouvellement : la nouvelle date de fin doit être enregistrée)')) return;
+        api('/api/restore', {method:'POST', body: JSON.stringify({id: x.id})}).then(function(){ msg('Services relancés — voir le journal'); load(false); loadLog(); }).catch(function(e){ msg(e.message, true); });
       });
       el.querySelector('[data-f=kind]').addEventListener('change', function(){
         var nk = this.value, m = DEF[nk];
@@ -275,12 +285,18 @@ button.danger{color:var(--crit)}
     (c.status.deadlines || []).forEach(function(x){ byId[x.id] = x; });
     $('deadlines').querySelectorAll('details.dl').forEach(function(el){
       var x = byKey(el.dataset.k), ds = x && x.id ? byId[x.id] : null;
-      var p = el.querySelector('[data-state]'), done = el.querySelector('[data-done]');
+      var p = el.querySelector('[data-state]'), done = el.querySelector('[data-done]'), rb = el.querySelector('[data-restore]');
+      rb.hidden = !(ds && ds.can_restore);
       if (!ds) { p.textContent = 'Nouvelle'; p.className = 'pill off'; done.textContent = ''; return; }
       var t = stateText(c, ds);
       p.textContent = t[0] + (ds.configured && !ds.expired ? ' · ' + ds.days_left + ' j' : '');
       p.className = 'pill ' + t[1];
-      done.textContent = ds.actions_done_at ? ('Actions exécutées le ' + ds.actions_done_at + '.') : (ds.stopped ? 'Actions en attente d\u2019exécution.' : '');
+      done.textContent = ds.actions_done_at
+        ? ('Arrêt exécuté le ' + ds.actions_done_at + ' (date de fin du ' + fmt(ds.actions_for) + ').' +
+           (ds.stopped ? ' Arrêt en cours : enregistrez la nouvelle date de fin avant de réactiver.'
+             : ds.restored_at ? ' Services réactivés le ' + ds.restored_at + '.'
+             : ds.can_restore ? ' Échéance renouvelée : les services peuvent être réactivés.' : ''))
+        : (ds.stopped ? 'Actions en attente d\u2019exécution.' : '');
     });
   }
   $('add-deadline').addEventListener('click', function(){
@@ -297,6 +313,7 @@ button.danger{color:var(--crit)}
       if (fill === false) { paint(c); return; }
       fields.forEach(function(k){ $(k).value = c[k] == null ? '' : c[k]; });
       $('enabled').checked = !!c.enabled;
+      $('report_enabled').checked = !!c.report_enabled;
       dls = (c.deadlines || []).map(function(x){ x._k = ++seq; return x; });
       if (dls.length === 1) dls[0]._open = true;
       renderDeadlines();
@@ -334,7 +351,7 @@ button.danger{color:var(--crit)}
 
   $('f').addEventListener('submit', function(e){
     e.preventDefault();
-    var body = { enabled: $('enabled').checked, new_password: $('new_password').value, deadlines: collect() };
+    var body = { enabled: $('enabled').checked, report_enabled: $('report_enabled').checked, new_password: $('new_password').value, deadlines: collect() };
     fields.forEach(function(k){ body[k] = $(k).value; });
     api('/api/config', {method:'POST', body: JSON.stringify(body)})
       .then(function(){ $('new_password').value=''; msg('Enregistré'); load(); })

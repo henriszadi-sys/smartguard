@@ -29,32 +29,62 @@
     '.ov{position:fixed;inset:0;z-index:2147483647;background:rgba(20,6,8,.92);display:flex;align-items:center;justify-content:center;padding:16px;font:15px/1.5 "Segoe UI",Roboto,Arial,sans-serif}' +
     '.card{max-width:520px;background:#fff;color:#222;border-radius:14px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}' +
     '.card h1{margin:0 0 10px;font-size:22px;color:#7a0f14}.card p{margin:8px 0}.card .c{color:#555;font-size:14px}' +
+    '.more{display:block;margin-top:3px;font-size:12px;opacity:.9}' +
+    '.rep{flex:none;color:inherit;font-weight:600;font-size:13px;text-decoration:none;border:1px solid currentColor;border-radius:8px;padding:5px 10px;white-space:nowrap}' +
+    '.rep:hover{background:rgba(0,0,0,.12)}' +
+    '.fab{position:fixed;right:16px;bottom:16px;z-index:2147483645;font:600 13px/1 "Segoe UI",Roboto,Arial,sans-serif;color:#fff;background:#1f5eff;border-radius:99px;padding:10px 14px;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}' +
+    '.fab:hover{background:#1748c7}' +
+    '.card .tag{display:inline-block;margin:0 0 8px;padding:2px 10px;border-radius:99px;border:1px solid #7a0f14;color:#7a0f14;font-size:13px;font-weight:600}' +
+    '.card .rep{display:inline-block;margin-top:12px;color:#fff;background:#7a0f14;border:0}' +
     '@media (max-width:600px){.bar{font-size:13px;padding:8px 10px;gap:10px}.days{font-size:17px;min-width:44px}}';
+
+  function left(d) {
+    return d.expired ? 'expiré' : (d.days_left + ' jour' + (d.days_left > 1 ? 's' : ''));
+  }
+  // Clé de masquage : l'ensemble des échéances affichées et leur décompte.
+  function hideKey(st) {
+    return (st.deadlines || []).map(function (d) { return d.id + ':' + d.level + ':' + d.days_left; }).join('|') || (st.level + '|' + st.days_left);
+  }
+  function reportLink(st, cls) {
+    return st.report_url ? '<a class="' + cls + '" href="' + esc(st.report_url) + '" target="_blank" rel="noopener">Signaler un problème</a>' : '';
+  }
 
   function render(st) {
     var old = document.getElementById('smartguard-host');
     if (old) old.remove();
-    if (!st || !st.show) return;
-    if (!st.blocked && get(KEY) === st.level + '|' + st.days_left) return;
+    if (!st) return;
+    var bar = st.show && (st.blocked || get(KEY) !== hideKey(st));
+    if (!bar && !st.report_url) return;
 
     var host = document.createElement('div');
     host.id = 'smartguard-host';
     var root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
     var title = esc(st.module_name) + (st.software_name ? ' — ' + esc(st.software_name) : '');
     var contact = st.contact ? '<p class="c">Fournisseur : ' + esc(st.contact) + '</p>' : '';
+    var html = '<style>' + CSS + '</style>';
 
     if (st.blocked) {
-      root.innerHTML = '<style>' + CSS + '</style><div class="ov" role="alertdialog" aria-modal="true"><div class="card">' +
-        '<h1>Accès suspendu</h1><p>' + esc(st.message) + '</p>' + contact + '</div></div>';
-    } else {
+      html += '<div class="ov" role="alertdialog" aria-modal="true"><div class="card">' +
+        '<h1>Accès suspendu</h1>' + (st.blocked_by ? '<div class="tag">Échéance : ' + esc(st.blocked_by) + '</div>' : '') +
+        '<p>' + esc(st.message) + '</p>' + contact + reportLink(st, 'rep') + '</div></div>';
+    } else if (bar) {
       var d = st.expired ? '!' : st.days_left;
       var unit = st.expired ? 'expiré' : (st.days_left > 1 ? 'jours' : 'jour');
-      root.innerHTML = '<style>' + CSS + '</style><div class="bar ' + esc(st.level) + '" role="alert">' +
+      var others = (st.deadlines || []).filter(function (x) { return x.id !== st.deadline_id; });
+      var more = others.length ? '<span class="more">Autre' + (others.length > 1 ? 's' : '') + ' échéance' + (others.length > 1 ? 's' : '') + ' : ' +
+        others.map(function (x) { return esc(x.label) + ' — ' + left(x); }).join(' · ') + '</span>' : '';
+      var label = (st.deadlines || []).length > 1 && st.label ? ' · ' + esc(st.label) : '';
+      html += '<div class="bar ' + esc(st.level) + '" role="alert">' +
         '<div class="days">' + d + '<small>' + unit + '</small></div>' +
-        '<div class="txt"><b>' + title + '</b>' + esc(st.message) + (st.contact ? ' — ' + esc(st.contact) : '') + '</div>' +
+        '<div class="txt"><b>' + title + label + '</b>' + esc(st.message) + (st.contact ? ' — ' + esc(st.contact) : '') + more + '</div>' +
+        reportLink(st, 'rep') +
         '<button class="x" type="button" title="Masquer pour cette session" aria-label="Fermer">×</button></div>';
-      root.querySelector('.x').onclick = function () { set(KEY, st.level + '|' + st.days_left); host.remove(); };
+    } else {
+      html += reportLink(st, 'fab');
     }
+    root.innerHTML = html;
+    var x = root.querySelector('.x');
+    if (x) x.onclick = function () { set(KEY, hideKey(st)); render(Object.assign({}, st, { show: false })); };
     (document.body || document.documentElement).appendChild(host);
   }
 
