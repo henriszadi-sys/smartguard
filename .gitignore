@@ -8,7 +8,7 @@ Linux/smartguard-setup
 *.zip
 
 # Documents commerciaux hors code
-SmartGUARD_Tarification.pdf
+/SmartGUARD_Tarification.pdf
 
-# Clé privée de l'éditeur (signature des licences) : jamais dans le dépôt
+# Clï¿½ privï¿½e de l'ï¿½diteur (signature des licences) : jamais dans le dï¿½pï¿½t
 cles-editeur/
