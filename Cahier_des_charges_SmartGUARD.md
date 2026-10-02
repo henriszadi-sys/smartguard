@@ -4,7 +4,7 @@
 
 | Version | Date | Base |
 |---|---|---|
-| 1.18 | 1er octobre 2026 | LISEZMOI.md et demandes complémentaires (v1.2 : renommage en SmartGUARD ; v1.3 : décisions par défaut ; v1.4 : portail fournisseur en SaaS ; v1.5 : rôle de l'éditeur, abonnement, application mobile ; v1.6 : signalement d'incidents par le client ; v1.7 : décisions sur l'espace client et risques identifiés ; v1.8 : licences et contrats ; v1.9 : détection de panne confirmée par le client ; v1.10 : validation des points 28, 29 et 31 ; v1.11 : poste serveur, administration par le fournisseur, systèmes minimaux, fonctionnalités optionnelles ; v1.12 : activation du module liée à l'abonnement, Windows Server 2016, confidentialité des noms de clients ; v1.13 : licence SmartGUARD par serveur ; v1.14 : maîtrise des blocages par le fournisseur, prix estimés ; v1.15 : licence perpétuelle, accès de base, proposition de tarification ; v1.16 : abonnement en trois formules ; v1.17 : options proportionnelles aux formules ; v1.18 : date de fin = date d'arrêt, alignement sur le code existant) |
+| 1.19 | 2 octobre 2026 | LISEZMOI.md et demandes complémentaires (v1.2 : renommage en SmartGUARD ; v1.3 : décisions par défaut ; v1.4 : portail fournisseur en SaaS ; v1.5 : rôle de l'éditeur, abonnement, application mobile ; v1.6 : signalement d'incidents par le client ; v1.7 : décisions sur l'espace client et risques identifiés ; v1.8 : licences et contrats ; v1.9 : détection de panne confirmée par le client ; v1.10 : validation des points 28, 29 et 31 ; v1.11 : poste serveur, administration par le fournisseur, systèmes minimaux, fonctionnalités optionnelles ; v1.12 : activation du module liée à l'abonnement, Windows Server 2016, confidentialité des noms de clients ; v1.13 : licence SmartGUARD par serveur ; v1.14 : maîtrise des blocages par le fournisseur, prix estimés ; v1.15 : licence perpétuelle, accès de base, proposition de tarification ; v1.16 : abonnement en trois formules ; v1.17 : options proportionnelles aux formules ; v1.18 : date de fin = date d'arrêt, alignement sur le code existant ; v1.19 : licences SmartGUARD signées par l'éditeur, mise à jour sans licence) |
 
 *Document de spécification fonctionnelle*
 
@@ -48,7 +48,10 @@ Le produit comprend un assistant d'installation et de configuration, un service 
 - Un **poste** (ou serveur) est la machine, physique ou virtuelle, qui sert de serveur chez le client : le logiciel du fournisseur à contrôler y est déjà installé, et SmartGUARD y est installé à son tour.
 - **Une licence SmartGUARD est obligatoire pour chaque serveur de l'application à contrôler.** Elle est acquise par le fournisseur auprès de l'éditeur et rattachée à son compte ; elle s'ajoute à l'abonnement au SaaS.
 - Une licence SmartGUARD couvre tous les modules installés sur ce serveur.
-- **Activation** : à l'installation, le technicien du fournisseur saisit la clé de licence SmartGUARD ; activation en ligne, ou hors ligne par fichier d'activation. Sans licence valide, le module ne s'installe pas.
+- **Activation** : à l'installation, le technicien du fournisseur saisit la clé de licence SmartGUARD ou charge le fichier de licence ; activation hors ligne dès maintenant, activation en ligne avec le portail. Sans licence valide, **une nouvelle installation est refusée** (assistant et commande d'installation).
+- **Mise à jour d'un module déjà installé** : possible sans licence SmartGUARD active ; l'assistant et l'administration la signalent alors comme « licence à activer ». *(validé le 2 octobre 2026)*
+- **Licences signées par l'éditeur** : chaque clé de licence est signée par l'éditeur (Ed25519) et vérifiée hors ligne par le module grâce à la clé publique intégrée au programme ; les clés non signées sont refusées. La clé privée de l'éditeur est conservée par lui, hors du code et du dépôt. *(validé le 2 octobre 2026)*
+- Une fois le module installé, la licence SmartGUARD **ne l'arrête jamais** : sa disparition ou sa désactivation n'interrompt ni les rappels ni les actions configurées par le fournisseur.
 - La licence est liée au serveur par une empreinte matérielle ; elle ne peut pas être active sur deux serveurs en même temps. Changement de serveur : désactivation sur l'ancien, puis activation sur le nouveau.
 - Une fois activé, le module **fonctionne hors ligne** et ne dépend pas du portail ; le rattachement au portail reste optionnel (section 13.2).
 - **Maîtrise des arrêts et blocages par le fournisseur** : le fournisseur achète la licence SmartGUARD et en dispose ; c'est lui, et lui seul, qui décide d'arrêter ou de bloquer l'application de son client, au moyen des actions qu'il configure (sections 8 et 10). L'éditeur ne déclenche jamais lui-même un arrêt ou un blocage chez le client, même si le fournisseur cesse de payer sa licence SmartGUARD ou son abonnement ; les conséquences d'un impayé restent entre l'éditeur et le fournisseur (point 36).
@@ -65,7 +68,7 @@ L'assistant guide l'administrateur en six étapes :
 2. **Échéances** : pour chaque échéance suivie, type (**licence**, **contrat de support / maintenance**, **abonnement**), dates de début et de fin, option **« Arrêter l'application à la date de fin »**, délai de rappel (30 jours par défaut), activation et aperçu du message. Un module peut suivre plusieurs échéances d'un même logiciel (par exemple sa licence et son contrat de support).
 3. **Affichage** : mode automatique avec bouton de test, ou intégration par ligne de code.
 4. **À l'échéance** : services à arrêter, adresses à bloquer et scripts à exécuter.
-5. **Sécurité** : mot de passe administrateur, dossier d'installation et raccourci éventuel.
+5. **Sécurité** : clé de licence SmartGUARD du serveur (saisie ou fichier) si le serveur n'en a pas encore, mot de passe administrateur, dossier d'installation et raccourci éventuel.
 6. **Récapitulatif** : revue de la configuration, y compris l'état du rattachement au portail et la liste des informations transmises au fournisseur, et confirmation avant installation.
 
 À la fin, l'assistant affiche l'adresse d'administration et, en mode ligne de code, le code à intégrer à l'application.
@@ -137,7 +140,7 @@ Pour un module rattaché au portail, le renouvellement se fait par **code de ren
 - L'accès est bloqué après 10 échecs de mot de passe.
 - Le recul de l'horloge du serveur ne doit pas repousser l'échéance.
 - Un administrateur du serveur peut arrêter le module ; SmartGUARD est un outil de rappel et d'application du contrat, pas une protection anti-piratage.
-- La méthode de liaison activation / poste serveur et les protections contre le clonage ou le transfert non autorisé restent à préciser ; comme le reste du produit, ce n'est pas une protection anti-piratage.
+- Liaison licence / serveur : identifiant de la machine enregistré à l'activation, installation copiée sur un autre serveur détectée. Sans portail, le module vérifie seulement la signature de l'éditeur : empêcher qu'une même licence soit active sur deux serveurs demande l'activation en ligne (portail). Comme le reste du produit, ce n'est pas une protection anti-piratage.
 - Échanges module ↔ portail uniquement en HTTPS sortant depuis le serveur du client ; aucun port entrant n'est ouvert pour le portail.
 - Chaque module s'authentifie auprès du portail avec un jeton propre, obtenu à l'enrôlement et révocable depuis le portail.
 - Les codes de renouvellement sont signés par une clé propre à chaque compte fournisseur ; le module conserve la clé publique reçue à l'enrôlement.
@@ -313,6 +316,7 @@ Option souscrite par le fournisseur dans son abonnement, **gratuite pour ses cli
 - L'assistant présente les six étapes et récapitule les paramètres avant installation.
 - Le service est créé et démarre automatiquement sur Windows ; le fonctionnement Linux est accessible selon le mode écran ou sans écran.
 - Le module ne s'installe qu'avec une licence SmartGUARD valide ; une licence ne peut pas être active sur deux serveurs en même temps ; une fois activé, le module fonctionne hors ligne.
+- Seules les licences signées par l'éditeur sont acceptées ; la mise à jour d'un module déjà installé reste possible sans licence et affiche « licence à activer » ; un module installé continue de fonctionner si la licence est retirée.
 - Les arrêts et blocages chez le client ne résultent que des actions configurées par le fournisseur ; l'éditeur ne peut en déclencher aucun, y compris en cas d'impayé du fournisseur.
 - Les noms des clients ne sont jamais affichés dans l'administration de l'éditeur ; tout accès technique de l'éditeur aux données d'un fournisseur est journalisé.
 - Les réglages réservés au fournisseur ne sont pas modifiables avec un accès client.
@@ -386,6 +390,8 @@ Chaque point ci-dessous porte une **décision par défaut proposée**, à valide
 | 35 | Confidentialité des noms de clients | Le fournisseur voit identifiant et nom ; l'administration de l'éditeur ne voit que les identifiants ; noms stockés normalement (pas de chiffrement par le fournisseur), accès techniques journalisés ; e-mails d'alerte avec le nom du client. *(validé le 1er octobre 2026)* |
 | 36 | Durée de la licence SmartGUARD | **Perpétuelle**, sans expiration ; correctifs et mises à jour de sécurité inclus, versions majeures payantes. *(validé le 1er octobre 2026)* |
 | 37 | Accès de base inclus dans la licence | Compte fournisseur, saisie des clients et échéances, gestion des licences SmartGUARD, une notification e-mail à J-30 par échéance, sans abonnement. *(validé le 1er octobre 2026)* |
+| 39 | Mise à jour sans licence | La mise à jour d'un module déjà installé (installé avant la licence obligatoire) n'exige pas de licence SmartGUARD ; elle est acceptée et signalée « licence à activer ». Seule une nouvelle installation exige une licence valide. *(validé le 2 octobre 2026)* |
+| 40 | Signature des licences | Licences SmartGUARD signées par l'éditeur (Ed25519), vérifiées hors ligne par le module ; paire de clés de l'éditeur créée le 2 octobre 2026, clé privée conservée par l'éditeur hors du dépôt. *(validé le 2 octobre 2026)* |
 | 38 | Cahier des charges de référence | La présente version fait référence ; le cahier v1.6 présent dans le dépôt de code est remplacé. Le code existant (module v1.6.0) est conservé et adapté. *(validé le 1er octobre 2026)* |
 
 ## 17. Risques identifiés et réponses
@@ -422,6 +428,8 @@ Risques relevés lors de l'analyse des idées avant leur intégration, avec la r
 | Important | Un arrêt déclenché par l'éditeur pour un impayé du fournisseur frapperait le client, qui n'est pas partie au litige. | Seul le fournisseur décide des arrêts et blocages ; l'éditeur ne bloque jamais l'application du client (section 4). |
 | Important | Légalité des arrêts et blocages : SmartGUARD est un outil légal, mais un arrêt doit reposer sur le contrat entre le fournisseur et son client. | Le fournisseur reste responsable de ses actions configurées ; modèle de clause de suspension recommandé au fournisseur ; actions journalisées. |
 | Important | Le fournisseur administre seul les réglages sensibles ; s'il est injoignable, le client ne peut rien ajuster. | Le client garde la consultation, la saisie du code de renouvellement et la réactivation ; procédure de transfert du mot de passe d'administration prévue au contrat entre fournisseur et client. |
+| Bloquant | Perte ou vol de la clé privée de l'éditeur : perte = plus aucune licence acceptée par les modules déjà livrés ; vol = licences contrefaites. | Clé conservée hors du dépôt, sauvegardée hors ligne en deux exemplaires (clé USB et coffre) ; en cas de vol, nouvelle paire de clés et nouvelle version du module. |
+| Mineur | La mise à jour sans licence permet de garder durablement des serveurs non licenciés. | Accepté (point 39) : état « licence à activer » visible dans l'administration et, plus tard, dans le portail. |
 | Mineur | Un client ayant plusieurs fournisseurs utilisant SmartGUARD multiplie les accès. | V1 : un accès par fournisseur ; espace client unique envisagé plus tard. |
 
 ## 18. Offre et tarification
@@ -497,3 +505,4 @@ Les options suivent la formule de l'abonnement : environ 25 % du prix de la form
 | 1.17 | 1er octobre 2026 | Prix des options proportionnels aux formules (application mobile ≈ 25 %, espace client ≈ 50 % du prix de la formule) ; utilisateurs inclus par formule (3, 10, 25) ; exemples mis à jour (proposition) |
 | 1.17 bis | 1er octobre 2026 | Correction du point 33 (texte écrasé par erreur en v1.14) |
 | 1.18 | 1er octobre 2026 | Alignement sur le code existant (module v1.6.0) : date de fin = date d'arrêt avec option « Arrêter l'application à la date de fin » par échéance (section 8 réécrite, point 9) ; ce cahier remplace le v1.6 du dépôt (point 38) ; licence SmartGUARD bloquante à l'installation confirmée |
+| 1.19 | 2 octobre 2026 | Licence SmartGUARD : nouvelle installation refusée sans licence valide, mise à jour d'un module existant possible et signalée (point 39) ; licences signées par l'éditeur, clé privée hors du dépôt (point 40) ; licence saisie ou chargée par fichier à l'étape 5 ; liaison au serveur précisée (section 11) ; critère d'acceptation et risques ajoutés |

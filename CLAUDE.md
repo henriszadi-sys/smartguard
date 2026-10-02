@@ -6,10 +6,10 @@ Anciennement nommé **LicGuard** : ne plus utiliser ce nom dans le code, les fic
 
 ## Documents de référence
 
-- `Cahier_des_charges_SmartGUARD.md` (**v1.18**) : spécification fonctionnelle. Elle fait foi. Les décisions de la section 16 marquées *à valider* sont des propositions : les suivre par défaut mais les isoler (configuration, paramètres) pour pouvoir les changer.
+- `Cahier_des_charges_SmartGUARD.md` (**v1.19**) : spécification fonctionnelle. Elle fait foi. Les décisions de la section 16 marquées *à valider* sont des propositions : les suivre par défaut mais les isoler (configuration, paramètres) pour pouvoir les changer.
 - `docs/Plan_de_developpement_SmartGUARD.md` : découpage en lots, critères d'acceptation couverts, suivi.
-- `docs/Etat_des_lieux_depot_SmartGUARD.md` : ce que le code v1.6.0 couvrait au départ et les écarts avec la v1.18.
-- `EMISSION_CLES.md` : émission des licences par le fournisseur (ne pas livrer aux clients).
+- `docs/Etat_des_lieux_depot_SmartGUARD.md` : ce que le code v1.6.0 couvrait au départ et les écarts avec le cahier des charges.
+- `EMISSION_CLES.md` : émission des licences SmartGUARD par l'éditeur (ne pas livrer aux clients).
 
 ## Composants
 
@@ -22,7 +22,7 @@ Pas de revendeur. Les paiements entre le fournisseur et son client sont **hors p
 
 ## Modèle commercial (impact sur le code)
 
-- **Licence SmartGUARD** : une par serveur de l'application à contrôler, perpétuelle, rattachée au compte du fournisseur, couvrant tous les modules du serveur. **Bloquante à l'installation** (pas d'installation sans licence valide) ; une fois installé, le module ne s'arrête jamais à cause de la licence.
+- **Licence SmartGUARD** : une par serveur de l'application à contrôler, perpétuelle, rattachée au compte du fournisseur, couvrant tous les modules du serveur. **Bloquante à l'installation** (pas de nouvelle installation sans licence valide, contrôle `RequireForInstall` dans l'assistant et la commande `install`) ; la mise à jour d'un module existant est acceptée sans licence et signalée « licence à activer » (`wizard.RequireLicenseOnUpdate = false`, point 39) ; une fois installé, le module ne s'arrête jamais à cause de la licence.
 - Droits par niveau (portail) : **licence seule** = accès de base (saisie des clients et échéances, une notification e-mail à J-30 par échéance) ; **abonnement** (Essentiel ≤ 10, Pro 11-50, Entreprise > 50 serveurs rattachés) = portail complet ; **options** (mobile, espace client) activées par compte. Droits contrôlés côté serveur.
 - Les prix sont des paramètres, jamais codés en dur.
 - Toujours qualifier « licence » : licence SmartGUARD (paquet `internal/license`) vs licence du logiciel du fournisseur (type d'échéance).
@@ -33,7 +33,7 @@ Pas de revendeur. Les paiements entre le fournisseur et son client sont **hors p
 - **Service natif** : `github.com/kardianos/service` (service Windows, unité systemd), avec `golang.org/x/sys` pour les droits administrateur sous Windows.
 - **Proxy inverse** : `net/http/httputil` (mode automatique, injection du bandeau dans les pages HTML).
 - **Interface web** (assistant + administration) : HTML/JS embarqué avec `embed` (paquet `web`), sans étape de build front.
-- **Stockage** : par module, `config.json` (paramètres), `config.state.json` (dernière heure vue, actions exécutées) et `config.license.json` (liaison de licence), sans serveur de base de données. Registre des modules : `%ProgramData%\SmartGUARD\installations.json` ou `/etc/smartguard/installations.json`.
+- **Stockage** : par module, `config.json` (paramètres), `config.state.json` (dernière heure vue, actions exécutées) sans serveur de base de données. Registre des modules : `%ProgramData%\SmartGUARD\installations.json` ou `/etc/smartguard/installations.json` ; licence SmartGUARD du serveur, unique pour tous les modules : `license.json` dans le même dossier (l'ancien `config.license.json` d'un module est repris automatiquement puis supprimé).
 - **Mot de passe** : PBKDF2-SHA256 de la bibliothèque standard (210 000 itérations, sel aléatoire), jamais en clair.
 - **Portail** (à venir) : binaire Go séparé, PostgreSQL, API REST, e-mails transactionnels. **Mobile** : Flutter, Firebase Cloud Messaging et APNs. Codes de renouvellement signés Ed25519.
 
@@ -65,7 +65,7 @@ Les exécutables (`Windows/SmartGUARD-Setup.exe`, `Linux/smartguard-setup`) et l
 ## Licence SmartGUARD (`internal/license/`)
 
 - Un « poste » est le serveur (identifiant machine haché) ; liaison locale hors ligne. Sans portail, une même clé utilisée sur deux serveurs n'est pas détectable (seule une installation copiée l'est).
-- Clés signées (`SGL1.…`, Ed25519) : le fournisseur (l'éditeur) garde la clé privée (`sgkeys keygen`, fichier `*.sgpriv`, ignoré par git, **jamais dans le dépôt**) ; la clé publique est dans `internal/license/public.key`, intégrée au binaire. `public.key` vide = mode non signé (clés `SGRD-…` à somme de contrôle) ; renseignée = mode signé, qui refuse tout le reste. Après avoir changé `public.key`, reconstruire les exécutables. Procédure : `EMISSION_CLES.md`.
+- Clés signées (`SGL1.…`, Ed25519) : l'éditeur garde la clé privée (`sgkeys keygen`, dossier `cles-editeur/` et fichiers `*.sgpriv` ignorés par git, **jamais dans le dépôt**) ; la clé publique est dans `internal/license/public.key`, intégrée au binaire. **Mode signé actif depuis le 2 octobre 2026** (v1.9.0) : les clés `SGRD-…` sont refusées. `public.key` vide = mode non signé (réservé aux tests). Après avoir changé `public.key`, reconstruire les exécutables. Procédure : `EMISSION_CLES.md`.
 - Ne jamais afficher ni journaliser la clé complète (`license.Mask`).
 - Identifiant machine, vérification et format de clé restent isolés dans ce paquet (contrôle en ligne et révocation via le portail à venir).
 
@@ -91,7 +91,7 @@ Passer `internal/version` et le titre de `LISEZMOI.md` à la nouvelle version av
 - **Date de fin = date d'arrêt**, pour chaque échéance : à **00:00 le jour de la date de fin**, selon l'heure du serveur du client, le message passe à « expiré ».
 - L'arrêt (services, blocage d'adresses, scripts) n'a lieu, **une seule fois**, à cette date que si l'option `stop_on_end` est cochée. Option décochée : jamais d'action.
 - `stop_date` n'existe plus : à la lecture d'un ancien `config.json`, sa valeur devient `end_date` et `stop_on_end` passe à vrai.
-- Un module pourra suivre **plusieurs échéances** (licence, contrat, abonnement), chacune avec sa date, son option d'arrêt, son rappel, son message et ses actions (lot 1) ; une configuration à une seule échéance doit être migrée sans perte. Ne pas coder « contrat » en dur.
+- Un module suit **plusieurs échéances** (licence, contrat, abonnement), chacune avec sa date, son option d'arrêt, son rappel, son message et ses actions ; une configuration v1.6 à une seule échéance est migrée sans perte (type « contrat de support »). Ne pas coder « contrat » en dur.
 - Le recul de l'horloge du serveur ne doit jamais repousser l'échéance : conserver un dernier horodatage connu et ne jamais reculer.
 - Au démarrage du service, recalculer l'état et exécuter **une seule fois** les actions d'arrêt manquées, puis journaliser.
 - Le rappel : orange puis **rouge à partir de J-7**, texte par défaut selon le type d'échéance, nombre de jours restants affiché.
