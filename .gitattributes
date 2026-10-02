@@ -6,3 +6,10 @@
 *.exe binary
 *.zip binary
 *.png binary
+
+# Sources Go, pages web et scripts : fins de ligne Unix (gofmt)
+*.go text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
+*.html text eol=lf
+*.js text eol=lf
