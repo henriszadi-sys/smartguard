@@ -2,7 +2,7 @@
 
 | Version | Date | Référence |
 |---|---|---|
-| 1.4 | 2 octobre 2026 | Cahier des charges v1.18, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0 ; v1.4 : une version du module par lot livré, lots 2 et 3 regroupés) |
+| 1.5 | 2 octobre 2026 | Cahier des charges v1.19, CLAUDE.md, état des lieux du dépôt (v1.1 : outils et budget ; v1.2 : organisation et rôles ; v1.3 : lots 0 à 5 recalés sur le code existant v1.6.0 ; v1.4 : une version du module par lot livré, lots 2 et 3 regroupés ; v1.5 : lot 4 terminé, référence cahier v1.19) |
 
 *Document de pilotage du développement. Le cahier des charges fait foi en cas de désaccord.*
 
@@ -32,7 +32,7 @@
 
 ## 2. Vue d'ensemble
 
-**Point de départ** : le dépôt contient déjà un module fonctionnel (v1.6.0, tests au vert) qui couvre l'essentiel des lots 1 à 5 initiaux (voir `Etat_des_lieux_depot_SmartGUARD.md`). Les lots 1 à 5 deviennent des **lots d'adaptation** de ce code au cahier des charges v1.18 ; le code existant est conservé, pas réécrit.
+**Point de départ** : le dépôt contient déjà un module fonctionnel (v1.6.0, tests au vert) qui couvre l'essentiel des lots 1 à 5 initiaux (voir `Etat_des_lieux_depot_SmartGUARD.md`). Les lots 1 à 5 deviennent des **lots d'adaptation** de ce code au cahier des charges (v1.18, puis v1.19) ; le code existant est conservé, pas réécrit.
 
 | Lot | Contenu | Composant | Dépend de | Charge estimée* |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@
 
 **Jalons**
 
-- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.10.0 conforme au cahier v1.18, installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
+- **Jalon A (lots 0 à 5)** : module SmartGUARD v1.10.0 conforme au cahier des charges en vigueur (v1.19), installable et utilisable sans portail. Peut être montré à un premier fournisseur pilote.
 - **Jalon B (lots 6 et 7)** : portail en ligne, accès de base et abonnements. Mise en service commerciale (après la vérification ARTCI).
 - **Jalon C (lot 8)** : options espace client et application mobile.
 
@@ -208,7 +208,7 @@ Les noms de produits sont des exemples ; le choix final reste ouvert. La colonne
 | 1 | Terminé (v1.7.0, publié sur `main`) | 1er oct. 2026 | 2 oct. 2026 | Tests au vert sous Windows et Linux ; migration v1.6 testée ; interface vérifiée dans un navigateur ; validé par Labenie |
 | 2 | Terminé avec le lot 3 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Bandeau multi-échéances, lien « Signaler un problème » désactivé par défaut ; tests Windows et Linux ; vérifié dans un navigateur |
 | 3 | Terminé avec le lot 2 (v1.8.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Page « accès suspendu » nommant l'échéance, réactivation par échéance limitée aux services arrêtés par SmartGUARD ; tests Windows et Linux |
-| 4 | À faire | | | |
+| 4 | Terminé (v1.9.0, publié sur `main`) | 2 oct. 2026 | 2 oct. 2026 | Licence par serveur ; installation refusée sans licence (assistant et commande `install`), mise à jour signalée (point 39) ; licences signées par l'éditeur, paire de clés créée (point 40) ; tests Windows et Linux ; assistant vérifié dans un navigateur |
 | 5 | À faire | | | |
 | 6 | À faire | | | |
 | 7 | À faire | | | |
