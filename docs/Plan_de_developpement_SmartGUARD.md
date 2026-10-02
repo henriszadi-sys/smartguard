@@ -203,8 +203,8 @@ Les noms de produits sont des exemples ; le choix final reste ouvert. La colonne
 | Lot | Statut | Début | Fin | Recette |
 |---|---|---|---|---|
 | Recrutement du développeur | À faire (avant le lot 5) | | | |
-| 0 | À démarrer | | | |
-| 1 | À faire | | | |
+| 0 | Terminé (reste : publier les exécutables v1.6 en « release » GitHub) | 1er oct. 2026 | 1er oct. 2026 | Tests au vert sous Windows et Linux ; dépôt poussé sur GitHub |
+| 1 | Développé — en attente de validation et de push (branche `lot-1-echeances`, v1.7.0) | 1er oct. 2026 | 2 oct. 2026 | Tests au vert sous Windows et Linux ; migration v1.6 testée ; interface vérifiée dans un navigateur |
 | 2 | À faire | | | |
 | 3 | À faire | | | |
 | 4 | À faire | | | |
