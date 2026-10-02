@@ -212,3 +212,24 @@ func TestRequireForInstall(t *testing.T) {
 		t.Fatalf("licence d'un autre serveur acceptée : %v", err)
 	}
 }
+
+// Mode signé (clé publique de l'éditeur intégrée) : les clés SGRD-… fabriquées
+// par l'algorithme sont refusées ; une licence émise par l'éditeur est acceptée
+// (variable SG_TEST_LICENSE, facultative, pour ne pas mettre de licence dans le dépôt).
+func TestEmbeddedPublicKeyRejectsUnsignedKeys(t *testing.T) {
+	pub := DefaultPublicKey()
+	if pub == nil {
+		t.Skip("aucune clé publique intégrée (mode non signé)")
+	}
+	mid := "poste-a"
+	m := newManager(t, &mid)
+	m.Public = pub
+	if _, err := m.RequireForInstall(MakeKey("ABCD", "EFGH", "JKLM")); err == nil {
+		t.Fatal("clé SGRD- acceptée alors que le module est en mode signé")
+	}
+	if key := os.Getenv("SG_TEST_LICENSE"); key != "" {
+		if s, err := m.RequireForInstall(key); err != nil || s.State != StateActive || !s.Signed {
+			t.Fatalf("licence émise par l'éditeur refusée : %+v %v", s, err)
+		}
+	}
+}
