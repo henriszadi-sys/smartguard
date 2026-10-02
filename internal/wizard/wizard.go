@@ -4,6 +4,7 @@ package wizard
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -255,7 +256,7 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 			s := scheduler.ComputeStatus(c, st.State(), time.Now())
 			v.SoftwareName, v.EndDate, v.Enabled, v.DaysLeft, v.Level = c.SoftwareName, s.EndDate, c.Enabled, s.DaysLeft, s.Level
 			v.Deadlines = len(c.Deadlines)
-			v.AdminURL = fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), in.Port, c.AdminPath)
+			v.AdminURL = fmt.Sprintf("%s://%s:%d%s/admin", Scheme(c.TLSCert, c.TLSKey), strings.ToLower(host), in.Port, c.AdminPath)
 			if svc, err := controlFor(in.Name, in.Exe, in.Config, c.SoftwareName); err == nil {
 				v.Status = svcStatusLabel(svc)
 			}
@@ -376,6 +377,7 @@ type installReq struct {
 	Password        string   `json:"password"`
 	Shortcut        bool     `json:"shortcut"`
 	LicenseKey      string   `json:"license_key"` // clé de licence SmartGUARD du serveur (saisie ou fichier)
+	HTTPS           bool     `json:"https"`       // administration (et application en mode automatique) en HTTPS, certificat auto-signé
 }
 
 // RequireLicenseOnUpdate : la mise à jour d'un module déjà installé exige-t-elle
@@ -615,6 +617,16 @@ func doInstall(q installReq) (map[string]any, error) {
 		}
 	}
 
+	// --- HTTPS (option, décochée par défaut) : certificat auto-signé du module
+	var tlsCert, tlsKey string
+	if q.HTTPS {
+		var err error
+		tlsCert, tlsKey, err = ensureSelfSigned(dir, localHosts(), time.Now())
+		if err := add("Certificat HTTPS auto-signé", err, tlsCert); err != nil {
+			return res, err
+		}
+	}
+
 	// --- configuration
 	st, err := config.NewStore(cfgPath)
 	if err == nil {
@@ -631,6 +643,12 @@ func doInstall(q installReq) (map[string]any, error) {
 				c.Deadlines = []config.Deadline{first}
 			}
 			c.Listen = fmt.Sprintf(":%d", q.Port)
+			switch {
+			case q.HTTPS:
+				c.TLSCert, c.TLSKey = tlsCert, tlsKey
+			case isGeneratedTLS(dir, c.TLSCert):
+				c.TLSCert, c.TLSKey = "", "" // HTTPS désactivé ; un certificat fourni par le client est conservé
+			}
 			c.Upstream = upstream
 			if q.Password != "" {
 				h, err := config.HashPassword(q.Password)
@@ -647,6 +665,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	}
 
 	adminPath := st.Config().AdminPath // chemin conservé lors d'une mise à jour
+	scheme := Scheme(st.Config().TLSCert, st.Config().TLSKey)
 
 	// --- service système
 	svc, err := controlFor(name, exeDst, cfgPath, q.SoftwareName)
@@ -673,7 +692,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	ok := false
 	for i := 0; i < 30 && !ok; i++ {
 		time.Sleep(500 * time.Millisecond)
-		ok = IsOurModule(fmt.Sprintf("http://127.0.0.1:%d%s/api/status", q.Port, adminPath))
+		ok = IsOurModule(fmt.Sprintf("%s://127.0.0.1:%d%s/api/status", scheme, q.Port, adminPath))
 	}
 	if !ok {
 		_ = add("Vérification du fonctionnement", errors.New("le module ne répond pas"), "")
@@ -684,7 +703,7 @@ func doInstall(q installReq) (map[string]any, error) {
 
 	// --- raccourci + registre
 	host, _ := os.Hostname()
-	adminURL := fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), q.Port, adminPath)
+	adminURL := fmt.Sprintf("%s://%s:%d%s/admin", scheme, strings.ToLower(host), q.Port, adminPath)
 	if q.Shortcut && runtime.GOOS == "windows" {
 		_ = add("Raccourci sur le bureau", platform.CreateShortcut(q.ModuleName, adminURL), "")
 	}
@@ -700,7 +719,7 @@ func doInstall(q installReq) (map[string]any, error) {
 	regMu.Unlock()
 
 	res["admin_url"] = adminURL
-	res["snippet"] = fmt.Sprintf(`<script src="http://%s:%d%s/banner.js" defer></script>`, strings.ToLower(host), q.Port, adminPath)
+	res["snippet"] = fmt.Sprintf(`<script src="%s://%s:%d%s/banner.js" defer></script>`, scheme, strings.ToLower(host), q.Port, adminPath)
 	res["mode"] = q.Mode
 	res["name"] = name
 	return res, nil
@@ -825,7 +844,8 @@ func diagnose(name, exe, cfgPath string) string {
 
 // IsOurModule indique si l'adresse répond comme l'API d'état d'un module SmartGUARD.
 func IsOurModule(url string) bool {
-	cl := &http.Client{Timeout: 3 * time.Second}
+	// Vérification locale (127.0.0.1) du module : le certificat auto-signé est accepté.
+	cl := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} // #nosec : contrôle de vie local
 	resp, err := cl.Get(url)
 	if err != nil {
 		return false

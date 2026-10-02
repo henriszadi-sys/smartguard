@@ -61,7 +61,7 @@ func runCheck(cfgPath string) int {
 	if err != nil {
 		// Déjà occupé : est-ce ce module qui tourne ?
 		port := c.Listen[strings.LastIndex(c.Listen, ":")+1:]
-		if wizard.IsOurModule("http://127.0.0.1:" + port + c.AdminPath + "/api/status") {
+		if wizard.IsOurModule(wizard.Scheme(c.TLSCert, c.TLSKey) + "://127.0.0.1:" + port + c.AdminPath + "/api/status") {
 			ok("le port %s est utilisé par ce module (déjà démarré)", c.Listen)
 		} else {
 			ko("impossible d'écouter sur %s : %v — port occupé par un autre programme ou bloqué", c.Listen, err)

@@ -133,7 +133,7 @@ function blank(){
     kind:'contrat', label:'', _others:0,
     start_date: today(), end_date:'', stop_on_end:false, warning_days:30, message: info.messages.contrat[0], expired_message: info.messages.contrat[1],
     services:[], blocked_urls:['/'], scripts:[], mode:'proxy', port:8080, upstream:'http://127.0.0.1:8081',
-    install_dir:'', password:'', password2:'', shortcut:true, license_key:'', _nameTouched:false, _dirTouched:false };
+    install_dir:'', password:'', password2:'', shortcut:true, license_key:'', https:false, _nameTouched:false, _dirTouched:false };
 }
 function today(){ var t=new Date(); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
 function fr(x){ if(!x) return '–'; var p=x.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
@@ -203,7 +203,7 @@ function edit(name){
       enabled:c.enabled, kind:e.kind||'contrat', label:e.label||'', _others:Math.max(0,(c.deadlines||[]).length-1),
       start_date:e.start_date, end_date:e.end_date, stop_on_end:!!e.stop_on_end, warning_days:e.warning_days||30, message:e.message, expired_message:e.expired_message,
       services:e.services||[], blocked_urls:e.blocked_urls||[], scripts:e.scripts||[], mode:c.upstream?'proxy':'script',
-      port: r.install.port, upstream:c.upstream||'http://127.0.0.1:8081', install_dir:r.install.dir, _nameTouched:true, _dirTouched:true, shortcut:true });
+      port: r.install.port, upstream:c.upstream||'http://127.0.0.1:8081', https: !!(c.tls_cert && c.tls_key), install_dir:r.install.dir, _nameTouched:true, _dirTouched:true, shortcut:true });
     go(0);
   }).catch(function(e){ alert(e.message); });
 }
@@ -360,12 +360,14 @@ function renderSecurity(c){
     '<div><label for="password2">Confirmation</label><input type="password" id="password2" autocomplete="new-password" value="'+esc(d.password2)+'"></div></div>' +
     '<p class="hint" style="margin-top:6px">8 caractères minimum. Identifiant : <b>admin</b></p>' +
     '<label for="install_dir">Dossier d\u2019installation</label><input type="text" id="install_dir" value="'+esc(d.install_dir)+'" '+(d.existing?'disabled':'')+'>' +
+    '<label class="toggle"><input type="checkbox" id="https" '+(d.https?'checked':'')+'><span><b>Administration en HTTPS</b><span class="hint">Certificat auto-signé créé sur ce serveur (le navigateur affichera un avertissement à accepter une fois). En mode automatique, l\u2019application passe aussi en https sur le port du module. Décoché par défaut.</span></span></label>' +
     (info.os==='windows' ? '<label class="toggle"><input type="checkbox" id="shortcut" '+(d.shortcut?'checked':'')+'><span><b>Raccourci sur le bureau</b><span class="hint">Vers la page d\u2019administration du module.</span></span></label>' : '') +
     '<div id="err"></div>';
   setFooter(true, true);
   $('#password').oninput=function(){ d.password=this.value; }; $('#password2').oninput=function(){ d.password2=this.value; };
   $('#install_dir').oninput=function(){ d.install_dir=this.value; d._dirTouched=true; };
   var sc=$('#shortcut'); if(sc) sc.onchange=function(){ d.shortcut=this.checked; };
+  $('#https').onchange=function(){ d.https=this.checked; };
   var lk=$('#license_key'); if(lk) lk.oninput=function(){ d.license_key=this.value.trim(); };
   var lf=$('#license_file'); if(lf) lf.onchange=function(){
     var f=this.files&&this.files[0]; if(!f) return;
@@ -383,7 +385,7 @@ function renderRecap(c){
     ['Période', fr(d.start_date)+' → '+fr(d.end_date)], ['Arrêt complet', d.stop_on_end ? fr(d.end_date)+' à 00:00' : 'aucun (pas d’arrêt automatique)'], ['Début du décompte', d.warning_days+' jours avant la fin'],
     ['État', d.enabled?'Activé':'Désactivé'],
     ['Affichage', d.mode==='proxy' ? 'Automatique — application : '+d.upstream : 'Par une ligne de code'],
-    ['Adresse du module', 'http://'+info.hostname+':'+d.port],
+    ['Adresse du module', (d.https?'https://':'http://')+info.hostname+':'+d.port],
     ['Licence SmartGUARD', (info.license||{}).state==='active' ? 'active sur ce serveur ('+((info.license||{}).masked_key||'')+')' : (d.license_key ? 'activée à l\u2019installation' : 'à activer depuis l\u2019administration')],
     ['Services à arrêter', d.services.join(', ')||'aucun'], ['Adresses à bloquer', d.blocked_urls.join(', ')||'aucune'], ['Scripts', d.scripts.join(', ')||'aucun'],
     ['Dossier', d.install_dir]

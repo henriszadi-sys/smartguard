@@ -1,6 +1,8 @@
 package wizard
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"os"
 	"path/filepath"
@@ -97,5 +99,37 @@ func TestInstallRefusedOnUnsupportedSystem(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatal("des fichiers ont été copiés malgré le refus")
+	}
+}
+
+// HTTPS : certificat auto-signé créé une fois, réutilisé ensuite, utilisable par le serveur.
+func TestSelfSignedCertificate(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 2, 9, 0, 0, 0, time.Local)
+	c1, k1, err := ensureSelfSigned(dir, []string{"srv-kelio", "192.168.1.20", "localhost"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.LoadX509KeyPair(c1, k1)
+	if err != nil {
+		t.Fatalf("certificat inutilisable : %v", err)
+	}
+	leaf, _ := x509.ParseCertificate(pair.Certificate[0])
+	if err := leaf.VerifyHostname("srv-kelio"); err != nil {
+		t.Fatalf("nom du serveur absent du certificat : %v", err)
+	}
+	if err := leaf.VerifyHostname("192.168.1.20"); err != nil {
+		t.Fatalf("adresse du serveur absente du certificat : %v", err)
+	}
+	b1, _ := os.ReadFile(c1)
+	c2, _, err := ensureSelfSigned(dir, []string{"srv-kelio"}, now.Add(24*time.Hour))
+	if b2, _ := os.ReadFile(c2); err != nil || string(b1) != string(b2) {
+		t.Fatal("certificat valide régénéré au lieu d'être réutilisé")
+	}
+	if !isGeneratedTLS(dir, c1) || isGeneratedTLS(dir, filepath.Join(dir, "client.pem")) {
+		t.Fatal("reconnaissance du certificat généré")
+	}
+	if Scheme(c1, k1) != "https" || Scheme("", "") != "http" {
+		t.Fatal("schéma d'adresse")
 	}
 }
