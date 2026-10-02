@@ -239,6 +239,7 @@ type installView struct {
 	Enabled      bool   `json:"enabled"`
 	DaysLeft     int    `json:"days_left"`
 	Level        string `json:"level"`
+	Deadlines    int    `json:"deadlines"` // nombre d'échéances suivies
 	Status       string `json:"status"`
 	AdminURL     string `json:"admin_url"`
 }
@@ -251,7 +252,8 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 		if st, err := config.OpenExisting(in.Config); err == nil {
 			c := st.Config()
 			s := scheduler.ComputeStatus(c, st.State(), time.Now())
-			v.SoftwareName, v.EndDate, v.Enabled, v.DaysLeft, v.Level = c.SoftwareName, c.EndDate, c.Enabled, s.DaysLeft, s.Level
+			v.SoftwareName, v.EndDate, v.Enabled, v.DaysLeft, v.Level = c.SoftwareName, s.EndDate, c.Enabled, s.DaysLeft, s.Level
+			v.Deadlines = len(c.Deadlines)
 			v.AdminURL = fmt.Sprintf("http://%s:%d%s/admin", strings.ToLower(host), in.Port, c.AdminPath)
 			if svc, err := controlFor(in.Name, in.Exe, in.Config, c.SoftwareName); err == nil {
 				v.Status = svcStatusLabel(svc)
@@ -268,9 +270,18 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 		"hostname":     host,
 		"installs":     views,
 		"dir_template": platform.DefaultInstallDir("{NOM}"),
-		"message":      config.DefaultMessage,
-		"expired":      config.DefaultExpiredMessage,
+		"messages":     defaultMessages(),
 	})
+}
+
+// defaultMessages : messages par défaut (rappel, échéance passée) par type d'échéance.
+func defaultMessages() map[string][2]string {
+	m := map[string][2]string{}
+	for _, k := range []string{config.KindContrat, config.KindLicence, config.KindAbonnement} {
+		a, b := config.DefaultMessages(k)
+		m[k] = [2]string{a, b}
+	}
+	return m
 }
 
 func (ss *setupServer) apiExisting(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +355,8 @@ type installReq struct {
 	SoftwareName    string   `json:"software_name"`
 	SupplierContact string   `json:"supplier_contact"`
 	Enabled         bool     `json:"enabled"`
+	Kind            string   `json:"kind"`  // type de la première échéance
+	Label           string   `json:"label"` // libellé de la première échéance
 	StartDate       string   `json:"start_date"`
 	EndDate         string   `json:"end_date"`
 	StopOnEnd       bool     `json:"stop_on_end"`
@@ -468,9 +481,10 @@ func doInstall(q installReq) (map[string]any, error) {
 		}
 		upstream = strings.TrimRight(pu.String(), "/")
 	}
-	check := config.Default()
-	check.StartDate, check.EndDate, check.StopOnEnd, check.Enabled = q.StartDate, q.EndDate, q.StopOnEnd, q.Enabled
-	if err := config.Validate(check); err != nil {
+	first := config.Deadline{Kind: q.Kind, Label: q.Label, StartDate: q.StartDate, EndDate: q.EndDate, StopOnEnd: q.StopOnEnd,
+		WarningDays: q.WarningDays, Message: q.Message, ExpiredMessage: q.ExpiredMessage,
+		Services: q.Services, BlockedURLs: q.BlockedURLs, Scripts: q.Scripts}
+	if err := config.ValidateDeadline(first); err != nil {
 		return res, err
 	}
 	dir := strings.TrimSpace(q.InstallDir)
@@ -525,10 +539,13 @@ func doInstall(q installReq) (map[string]any, error) {
 			c.SoftwareName = strings.TrimSpace(q.SoftwareName)
 			c.SupplierContact = strings.TrimSpace(q.SupplierContact)
 			c.Enabled = q.Enabled
-			c.StartDate, c.EndDate, c.StopOnEnd = q.StartDate, q.EndDate, q.StopOnEnd
-			c.WarningDays = q.WarningDays
-			c.Message, c.ExpiredMessage = q.Message, q.ExpiredMessage
-			c.Services, c.BlockedURLs, c.Scripts = q.Services, q.BlockedURLs, q.Scripts
+			// L'assistant règle la première échéance ; les autres sont conservées.
+			if len(c.Deadlines) > 0 {
+				first.ID = c.Deadlines[0].ID
+				c.Deadlines[0] = first
+			} else {
+				c.Deadlines = []config.Deadline{first}
+			}
 			c.Listen = fmt.Sprintf(":%d", q.Port)
 			c.Upstream = upstream
 			if q.Password != "" {

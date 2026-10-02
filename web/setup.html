@@ -30,7 +30,7 @@ footer{display:flex;gap:10px;align-items:center;padding:16px 34px;border-top:1px
 footer .grow{flex:1}
 label{display:block;font-weight:600;font-size:13.5px;margin:16px 0 5px}
 .hint{font-weight:400;color:var(--muted);font-size:12.5px}
-input[type=text],input[type=date],input[type=number],input[type=password],input[type=search],textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink);font:inherit}
+input[type=text],input[type=date],input[type=number],input[type=password],input[type=search],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink);font:inherit}
 input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 textarea{min-height:64px;resize:vertical}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -124,13 +124,14 @@ pre{background:var(--soft);border:1px solid var(--line);border-radius:10px;paddi
 (function(){
 'use strict';
 var TOKEN = new URLSearchParams(location.search).get('t') || '';
-var STEPS = ['Logiciel','Contrat','Affichage','À l\u2019arrêt','Sécurité','Récapitulatif'];
+var STEPS = ['Logiciel','Échéance','Affichage','À l\u2019arrêt','Sécurité','Récapitulatif'];
 var info = null, services = null, step = -1; // -1 = accueil
 var d = {}; // données saisies
 
 function blank(){
   return { existing:'', module_name:'', software_name:'', supplier_contact:'', enabled:true,
-    start_date: today(), end_date:'', stop_on_end:false, warning_days:30, message: info.message, expired_message: info.expired,
+    kind:'contrat', label:'', _others:0,
+    start_date: today(), end_date:'', stop_on_end:false, warning_days:30, message: info.messages.contrat[0], expired_message: info.messages.contrat[1],
     services:[], blocked_urls:['/'], scripts:[], mode:'proxy', port:8080, upstream:'http://127.0.0.1:8081',
     install_dir:'', password:'', password2:'', shortcut:true, _nameTouched:false, _dirTouched:false };
 }
@@ -195,9 +196,11 @@ function renderHome(c){
 function edit(name){
   api('/api/existing?name='+encodeURIComponent(name)).then(function(r){
     var c = r.config; d = blank();
+    var e = (c.deadlines||[])[0] || {kind:'contrat', start_date:today(), end_date:'', warning_days:30, message:info.messages.contrat[0], expired_message:info.messages.contrat[1], blocked_urls:['/']};
     Object.assign(d, { existing:name, module_name:c.module_name, software_name:c.software_name, supplier_contact:c.supplier_contact,
-      enabled:c.enabled, start_date:c.start_date, end_date:c.end_date, stop_on_end:!!c.stop_on_end, warning_days:c.warning_days, message:c.message, expired_message:c.expired_message,
-      services:c.services||[], blocked_urls:c.blocked_urls||[], scripts:c.scripts||[], mode:c.upstream?'proxy':'script',
+      enabled:c.enabled, kind:e.kind||'contrat', label:e.label||'', _others:Math.max(0,(c.deadlines||[]).length-1),
+      start_date:e.start_date, end_date:e.end_date, stop_on_end:!!e.stop_on_end, warning_days:e.warning_days||30, message:e.message, expired_message:e.expired_message,
+      services:e.services||[], blocked_urls:e.blocked_urls||[], scripts:e.scripts||[], mode:c.upstream?'proxy':'script',
       port: r.install.port, upstream:c.upstream||'http://127.0.0.1:8081', install_dir:r.install.dir, _nameTouched:true, _dirTouched:true, shortcut:true });
     go(0);
   }).catch(function(e){ alert(e.message); });
@@ -227,7 +230,11 @@ function renderSoftware(c){
 
 // ---- étape 2
 function renderContract(c){
-  c.innerHTML = '<h1>Contrat / licence</h1><p class="lead">Période couverte par la licence et le contrat de support technique.</p>' +
+  var kinds = [['contrat','Contrat de support'],['licence','Licence'],['abonnement','Abonnement']];
+  c.innerHTML = '<h1>Échéance</h1><p class="lead">Première échéance suivie par le module. D\u2019autres échéances (licence, contrat, abonnement) pourront être ajoutées ensuite dans l\u2019administration du module.</p>' +
+    (d._others ? '<p class="hint">Ce module suit aussi '+d._others+' autre'+(d._others>1?'s':'')+' échéance'+(d._others>1?'s':'')+', conservée'+(d._others>1?'s':'')+' telle'+(d._others>1?'s':'')+' quelle'+(d._others>1?'s':'')+' (modifiables dans l\u2019administration).</p>' : '') +
+    '<div class="row"><div><label for="kind">Type d\u2019échéance</label><select id="kind">'+kinds.map(function(k){ return '<option value="'+k[0]+'"'+(d.kind===k[0]?' selected':'')+'>'+k[1]+'</option>'; }).join('')+'</select></div>' +
+    '<div><label for="label">Libellé <span class="hint">(optionnel)</span></label><input type="text" id="label" maxlength="80" placeholder="ex. Maintenance annuelle" value="'+esc(d.label)+'"></div></div>' +
     '<div class="row"><div><label for="start_date">Date de début</label><input type="date" id="start_date" value="'+esc(d.start_date)+'"></div>' +
     '<div><label for="end_date">Date de fin <span class="hint">— expire à 00:00</span></label><input type="date" id="end_date" value="'+esc(d.end_date)+'"></div></div>' +
     '<label class="toggle"><input type="checkbox" id="stop_on_end" '+(d.stop_on_end?'checked':'')+'><span><b>Arrêter l’application à la date de fin</b><span class="hint">Coché : à 00:00 ce jour-là, services arrêtés, adresses bloquées, scripts exécutés. Décoché : message « expiré » seul.</span></span></label>' +
@@ -241,6 +248,15 @@ function renderContract(c){
   setFooter(true, true);
   ['start_date','end_date','message','expired_message'].forEach(function(k){ $('#'+k).oninput=function(){ d[k]=this.value; preview(); }; });
   $('#stop_on_end').onchange=function(){ d.stop_on_end=this.checked; };
+  $('#label').oninput=function(){ d.label=this.value; };
+  $('#kind').onchange=function(){
+    // Messages par défaut : remplacés par ceux du nouveau type ; messages personnalisés conservés.
+    var isDef=function(m,i){ return Object.keys(info.messages).some(function(k){ return info.messages[k][i]===m; }); };
+    d.kind=this.value;
+    if(isDef(d.message,0)){ d.message=info.messages[d.kind][0]; $('#message').value=d.message; }
+    if(isDef(d.expired_message,1)){ d.expired_message=info.messages[d.kind][1]; $('#expired_message').value=d.expired_message; }
+    preview();
+  };
   $('#warning_days').oninput=function(){ d.warning_days=parseInt(this.value,10)||30; preview(); };
   $('#enabled').onchange=function(){ d.enabled=this.checked; };
   preview();
@@ -347,6 +363,7 @@ function renderSecurity(c){
 function renderRecap(c){
   var rows = [
     ['Logiciel', d.software_name], ['Nom du module', d.module_name], ['Contact fournisseur', d.supplier_contact||'–'],
+    ['Échéance', ({contrat:'Contrat de support',licence:'Licence',abonnement:'Abonnement'})[d.kind]+(d.label?' — '+d.label:'')+(d._others?' (+ '+d._others+' autre'+(d._others>1?'s':'')+')':'')],
     ['Période', fr(d.start_date)+' → '+fr(d.end_date)], ['Arrêt complet', d.stop_on_end ? fr(d.end_date)+' à 00:00' : 'aucun (pas d’arrêt automatique)'], ['Début du décompte', d.warning_days+' jours avant la fin'],
     ['État', d.enabled?'Activé':'Désactivé'],
     ['Affichage', d.mode==='proxy' ? 'Automatique — application : '+d.upstream : 'Par une ligne de code'],
@@ -377,7 +394,7 @@ $('#next').onclick = function(){
 
 function install(){
   var btn=$('#next'); btn.disabled=true; $('#back').disabled=true; btn.innerHTML='<span class="spinner"></span>Installation…';
-  var body = Object.assign({}, d); delete body.password2;
+  var body = Object.assign({}, d); delete body.password2; delete body._others;
   api('/api/install', body).then(function(r){ showResult(r, null); }).catch(function(e){ showResult(e.data||{}, e.message); })
     .finally(function(){ $('#back').disabled=false; });
 }

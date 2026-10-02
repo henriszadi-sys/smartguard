@@ -34,7 +34,10 @@ func runCheck(cfgPath string) int {
 	if err := config.Validate(c); err != nil {
 		ko("configuration invalide : %v", err)
 	} else {
-		ok("dates : %s → %s, arrêt à la fin : %v, module %s", orDash(c.StartDate), orDash(c.EndDate), c.StopOnEnd, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled])
+		ok("%d échéance(s), module %s", len(c.Deadlines), map[bool]string{true: "activé", false: "désactivé"}[c.Enabled])
+		for _, d := range c.Deadlines {
+			ok("  %s « %s » : %s → %s, arrêt à la fin : %v", d.ID, d.Name(), orDash(d.StartDate), d.EndDate, d.StopOnEnd)
+		}
 	}
 	if c.AdminPasswordHash == "" {
 		ko("aucun mot de passe administrateur défini")

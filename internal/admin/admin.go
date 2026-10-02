@@ -28,11 +28,11 @@ import (
 type Server struct {
 	Store   *config.Store
 	Log     *logging.Logger
-	Proxy   *proxy.Proxy          // nil = mode « ligne de code »
-	Now     func() time.Time      // horloge injectable (time.Now par défaut)
-	Restore func(c config.Config) // réactivation des services après renouvellement
-	Changed func()                // appelée après un enregistrement de la configuration
-	License *license.Manager      // liaison licence / poste (nil = fonction absente)
+	Proxy   *proxy.Proxy               // nil = mode « ligne de code »
+	Now     func() time.Time           // horloge injectable (time.Now par défaut)
+	Restore func(ds []config.Deadline) // réactivation des services après renouvellement
+	Changed func()                     // appelée après un enregistrement de la configuration
+	License *license.Manager           // liaison licence / poste (nil = fonction absente)
 
 	sessMu   sync.Mutex
 	sessions map[string]time.Time
@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		st := s.status(c)
-		if c.Enabled && st.Stopped && scheduler.IsBlocked(c, r.Host, r.URL.Path) {
+		if scheduler.Blocks(c, st, r.Host, r.URL.Path) {
 			proxy.RenderExpired(w, st)
 			return
 		}
@@ -89,11 +89,9 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Cache-Control", "no-store")
 		st := s.status(c)
-		if st.Stopped && c.Enabled {
-			if p := r.URL.Query().Get("page"); p != "" {
-				if pu, err := url.Parse(p); err == nil {
-					st.Blocked = scheduler.IsBlocked(c, pu.Host, pu.Path)
-				}
+		if p := r.URL.Query().Get("page"); p != "" {
+			if pu, err := url.Parse(p); err == nil {
+				st.Blocked = scheduler.Blocks(c, st, pu.Host, pu.Path)
 			}
 		}
 		st.Contact = c.SupplierContact
@@ -122,10 +120,11 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 		if !s.auth(w, r) || !postOnly(w, r) {
 			return
 		}
-		if s.Restore != nil {
-			s.Restore(c)
+		ds, still := s.restorable(c)
+		if s.Restore != nil && len(ds) > 0 {
+			s.Restore(ds)
 		}
-		WriteJSON(w, map[string]any{"ok": true})
+		WriteJSON(w, map[string]any{"ok": true, "restored": len(ds), "still_stopped": still})
 	case "/api/license":
 		if !s.auth(w, r) {
 			return
@@ -143,21 +142,16 @@ func (s *Server) moduleRoutes(w http.ResponseWriter, r *http.Request, c config.C
 
 type adminView struct {
 	config.Config
-	AdminPasswordHash string           `json:"admin_password_hash,omitempty"` // masque le hash
-	Status            scheduler.Status `json:"status"`
-	ActionsDoneAt     string           `json:"actions_done_at"`
-	Proxy             bool             `json:"proxy"`
+	AdminPasswordHash string               `json:"admin_password_hash,omitempty"` // masque le hash
+	Status            scheduler.Status     `json:"status"`
+	Proxy             bool                 `json:"proxy"`
+	DefaultMessages   map[string][2]string `json:"default_messages"` // messages par défaut par type d'échéance
 }
 
 func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Config) {
 	switch r.Method {
 	case http.MethodGet:
-		st := s.Store.State()
-		v := adminView{Config: c, Status: s.status(c), Proxy: s.Proxy != nil}
-		if !st.ActionsDoneAt.IsZero() && st.ActionsFor == c.EndDate {
-			v.ActionsDoneAt = st.ActionsDoneAt.Format("02/01/2006 15:04")
-		}
-		WriteJSON(w, v)
+		WriteJSON(w, adminView{Config: c, Status: s.status(c), Proxy: s.Proxy != nil, DefaultMessages: defaultMessages()})
 	case http.MethodPost:
 		if !postOnly(w, r) {
 			return
@@ -176,10 +170,7 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			x.SoftwareName = strings.TrimSpace(in.SoftwareName)
 			x.SupplierContact = strings.TrimSpace(in.SupplierContact)
 			x.Enabled = in.Enabled
-			x.StartDate, x.EndDate, x.StopOnEnd = in.StartDate, in.EndDate, in.StopOnEnd
-			x.WarningDays = in.WarningDays
-			x.Message, x.ExpiredMessage = in.Message, in.ExpiredMessage
-			x.Services, x.BlockedURLs, x.Scripts = in.Services, in.BlockedURLs, in.Scripts
+			x.Deadlines = in.Deadlines
 			if x.ModuleName == "" {
 				x.ModuleName = "SmartGUARD"
 			}
@@ -202,8 +193,12 @@ func (s *Server) apiConfig(w http.ResponseWriter, r *http.Request, c config.Conf
 			return
 		}
 		after := s.Store.Config()
-		s.Log.Printf("Configuration modifiée par %s : logiciel « %s », %s → %s, arrêt à la date de fin : %v, module %s",
-			clientIP(r), after.SoftwareName, after.StartDate, after.EndDate, after.StopOnEnd, map[bool]string{true: "ACTIVÉ", false: "désactivé"}[after.Enabled])
+		s.Log.Printf("Configuration modifiée par %s : logiciel « %s », %d échéance(s), module %s",
+			clientIP(r), after.SoftwareName, len(after.Deadlines), map[bool]string{true: "ACTIVÉ", false: "désactivé"}[after.Enabled])
+		for _, d := range after.Deadlines {
+			s.Log.Printf("  échéance %s « %s » (%s) : %s → %s, arrêt à la date de fin : %v",
+				d.ID, d.Name(), config.KindLabel(d.Kind), orDash(d.StartDate), d.EndDate, d.StopOnEnd)
+		}
 		if before.Enabled != after.Enabled {
 			s.Log.Printf("Module %s", map[bool]string{true: "activé", false: "désactivé"}[after.Enabled])
 		}
@@ -263,6 +258,39 @@ func (s *Server) apiLicense(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+// restorable renvoie les échéances dont les services peuvent être relancés
+// (échéances non arrêtées, c'est-à-dire renouvelées ou sans arrêt) et le
+// nombre d'échéances encore arrêtées, dont les services restent arrêtés.
+func (s *Server) restorable(c config.Config) ([]config.Deadline, int) {
+	st := s.status(c)
+	var ds []config.Deadline
+	still := 0
+	for i, d := range c.Deadlines {
+		if st.Deadlines[i].Stopped && c.Enabled {
+			still++
+			continue
+		}
+		ds = append(ds, d)
+	}
+	return ds, still
+}
+
+func defaultMessages() map[string][2]string {
+	m := map[string][2]string{}
+	for _, k := range []string{config.KindContrat, config.KindLicence, config.KindAbonnement} {
+		a, b := config.DefaultMessages(k)
+		m[k] = [2]string{a, b}
+	}
+	return m
+}
+
+func orDash(v string) string {
+	if v == "" {
+		return "–"
+	}
+	return v
 }
 
 func postOnly(w http.ResponseWriter, r *http.Request) bool {

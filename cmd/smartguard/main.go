@@ -196,7 +196,7 @@ func main() {
 	}
 	watcher := &scheduler.Watcher{
 		Store:  store,
-		Expire: func(c config.Config) { actions.Enforce(c, logger.Printf) },
+		Expire: func(c config.Config, d config.Deadline) { actions.Enforce(c, d, logger.Printf) },
 	}
 	lic := license.NewManager(abs)
 	srv := &admin.Server{
@@ -204,7 +204,7 @@ func main() {
 		Log:     logger,
 		License: lic,
 		Proxy:   px,
-		Restore: func(c config.Config) { actions.Restore(c, logger.Printf) },
+		Restore: func(ds []config.Deadline) { actions.Restore(ds, logger.Printf) },
 		Changed: watcher.Tick,
 	}
 
@@ -234,9 +234,20 @@ func main() {
 		fmt.Printf("Service « %s » : %s OK\n", svcName, cmd)
 	case "status":
 		st := scheduler.ComputeStatus(c, store.State(), time.Now())
-		fmt.Printf("Module      : %s (%s)\nLogiciel    : %s\nContrat     : %s → %s\nJours rest. : %d\nExpiré      : %v\nArrêt à la fin : %v (arrêté : %v)\nBandeau     : %v\nMessage     : %s\n",
+		fmt.Printf("Module      : %s (%s)\nLogiciel    : %s\nÉchéances   : %d\nBandeau     : %v\nMessage     : %s\n",
 			c.ModuleName, map[bool]string{true: "activé", false: "désactivé"}[c.Enabled],
-			c.SoftwareName, c.StartDate, c.EndDate, st.DaysLeft, st.Expired, c.StopOnEnd, st.Stopped, st.Show, st.Message)
+			c.SoftwareName, len(st.Deadlines), st.Show, st.Message)
+		for _, d := range st.Deadlines {
+			name := d.Label
+			if d.Label != d.KindLabel {
+				name += " (" + d.KindLabel + ")"
+			}
+			fmt.Printf("\n[%s] %s\n  Période     : %s → %s\n  Jours rest. : %d\n  Expirée     : %v\n  Arrêt à la fin : %v (arrêtée : %v)\n",
+				d.ID, name, orDash(d.StartDate), orDash(d.EndDate), d.DaysLeft, d.Expired, d.StopOnEnd, d.Stopped)
+			if d.ActionsDoneAt != "" {
+				fmt.Printf("  Actions exécutées le %s\n", d.ActionsDoneAt)
+			}
+		}
 	case "license":
 		runLicense(lic, logger, flag.Args()[1:])
 	case "set-password":

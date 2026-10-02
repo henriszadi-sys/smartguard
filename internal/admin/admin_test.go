@@ -25,9 +25,9 @@ func newServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	if err := st.UpdateConfig(func(c *config.Config) error {
-		c.Enabled, c.StartDate, c.EndDate, c.AdminPasswordHash = true, "2026-01-01", "2026-10-05", h
-		c.StopOnEnd = true
-		c.BlockedURLs = []string{"/"}
+		c.Enabled, c.AdminPasswordHash = true, h
+		c.Deadlines = []config.Deadline{{Kind: config.KindContrat, StartDate: "2026-01-01", EndDate: "2026-10-05",
+			StopOnEnd: true, BlockedURLs: []string{"/"}, Services: []string{"kelio"}}}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -80,7 +80,8 @@ func TestProtectedAPIRequiresSessionAndHeader(t *testing.T) {
 	cookie := lw.Result().Cookies()[0]
 
 	restored := 0
-	s.Restore = func(config.Config) { restored++ }
+	s.Now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
+	s.Restore = func([]config.Deadline) { restored++ }
 	post := func(withHeader bool) int {
 		r := httptest.NewRequest(http.MethodPost, "/_smartguard/api/restore", nil)
 		r.AddCookie(cookie)
@@ -115,12 +116,59 @@ func TestExpiredPageUsesInjectedClock(t *testing.T) {
 		t.Fatalf("page « accès suspendu » attendue à la date de fin : code %d", w.Code)
 	}
 	// Sans l'option d'arrêt, la fin du contrat ne bloque rien.
-	if err := s.Store.UpdateConfig(func(c *config.Config) error { c.StopOnEnd = false; return nil }); err != nil {
+	if err := s.Store.UpdateConfig(func(c *config.Config) error { c.Deadlines[0].StopOnEnd = false; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	w = httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
 	if w.Code == http.StatusServiceUnavailable {
 		t.Fatal("page bloquée à la fin du contrat sans option d'arrêt")
+	}
+}
+
+// Réactivation : seuls les services des échéances qui ne sont plus arrêtées sont relancés.
+func TestRestoreSkipsStillStoppedDeadlines(t *testing.T) {
+	s := newServer(t)
+	s.Now = func() time.Time { return time.Date(2026, 10, 6, 9, 0, 0, 0, time.Local) }
+	if err := s.Store.UpdateConfig(func(c *config.Config) error {
+		c.Deadlines = append(c.Deadlines, config.Deadline{Kind: config.KindLicence, EndDate: "2027-01-01", StopOnEnd: true, Services: []string{"paie"}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ds, still := s.restorable(s.Store.Config())
+	if still != 1 || len(ds) != 1 || ds[0].Services[0] != "paie" {
+		t.Fatalf("réactivation : %+v, encore arrêtées %d", ds, still)
+	}
+}
+
+// Enregistrement de plusieurs échéances par l'interface d'administration.
+func TestConfigAPISavesDeadlines(t *testing.T) {
+	s := newServer(t)
+	cookie := login(s, "motdepasse1").Result().Cookies()[0]
+	body := `{"module_name":"Kelio","software_name":"Kelio","enabled":true,"deadlines":[
+		{"id":"d1","kind":"contrat","start_date":"2026-01-01","end_date":"2026-12-31","stop_on_end":false},
+		{"kind":"licence","label":"Licence Kelio","end_date":"2027-03-31","stop_on_end":true,"services":["kelio"]}]}`
+	r := httptest.NewRequest(http.MethodPost, "/_smartguard/api/config", strings.NewReader(body))
+	r.AddCookie(cookie)
+	r.Header.Set("X-SmartGUARD", "1")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("enregistrement : code %d %s", w.Code, w.Body.String())
+	}
+	c := s.Store.Config()
+	if len(c.Deadlines) != 2 || c.Deadlines[1].ID != "d2" || c.Deadlines[1].Label != "Licence Kelio" || !c.Deadlines[1].StopOnEnd {
+		t.Fatalf("échéances enregistrées : %+v", c.Deadlines)
+	}
+	// Échéance invalide : refus et configuration inchangée.
+	bad := strings.Replace(body, "2027-03-31", "", 1)
+	r = httptest.NewRequest(http.MethodPost, "/_smartguard/api/config", strings.NewReader(bad))
+	r.AddCookie(cookie)
+	r.Header.Set("X-SmartGUARD", "1")
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest || len(s.Store.Config().Deadlines) != 2 {
+		t.Fatalf("échéance sans date de fin : code %d", w.Code)
 	}
 }

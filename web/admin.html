@@ -40,6 +40,18 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 code,pre{font-family:Consolas,Menlo,monospace;font-size:12px}
 pre{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all;max-height:260px;margin:0}
 .side{display:grid;gap:16px}
+select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);font:inherit}
+.dl{border:1px solid var(--line);border-radius:10px;margin-top:12px}
+.dl>summary{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;list-style:none;font-weight:600}
+.dl>summary::-webkit-details-marker{display:none}
+.dl>summary .t{flex:1;min-width:0}.dl>summary .t small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.dl .body{padding:0 12px 12px;border-top:1px solid var(--line)}
+.dl .pill{margin:0}
+.dlist{display:grid;gap:6px;margin-top:12px;font-size:13px}
+.dlist div{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:6px}
+.dlist b{font-weight:600}
+button.small{padding:5px 10px;font-size:12px}
+button.danger{color:var(--crit)}
 </style>
 </head>
 <body>
@@ -54,11 +66,12 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       <div class="hint" id="progtxt"></div>
       <dl class="kv">
         <dt>Logiciel</dt><dd id="s-soft">–</dd>
+        <dt>Échéance</dt><dd id="s-label">–</dd>
         <dt>Période</dt><dd id="s-period">–</dd>
         <dt>Arrêt prévu</dt><dd id="s-stop">–</dd>
-        <dt>Actions</dt><dd id="s-actions">–</dd>
       </dl>
       <div class="preview" id="preview" hidden></div>
+      <div class="dlist" id="dlist"></div>
     </section>
     <section class="card" id="license-card">
       <h2>Licence / poste</h2>
@@ -102,27 +115,10 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
       <input type="text" id="supplier_contact" maxlength="200" placeholder="ex. support@fournisseur.ci — +225 07 00 00 00 00">
     </fieldset>
 
-    <fieldset><legend>Contrat / licence</legend>
-      <div class="row">
-        <div><label for="start_date">Date de début</label><input type="date" id="start_date"></div>
-        <div><label for="end_date">Date de fin <span class="hint">(expiration à 00:00 ce jour-là)</span></label><input type="date" id="end_date"></div>
-      </div>
-      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="stop_on_end"> Arrêter l'application à la date de fin <span class="hint">(services, adresses bloquées, scripts — décoché : message « expiré » seul)</span></label>
-      <label for="warning_days">Début du décompte <span class="hint">(jours avant l'expiration — 30 = un mois)</span></label>
-      <input type="number" id="warning_days" min="1" max="365" style="max-width:140px">
-      <label for="message">Message de décompte <span class="hint">— variables : {jours} {logiciel} {date_fin} {fournisseur}</span></label>
-      <textarea id="message" style="min-height:56px;font-family:inherit"></textarea>
-      <label for="expired_message">Message après expiration</label>
-      <textarea id="expired_message" style="min-height:56px;font-family:inherit"></textarea>
-    </fieldset>
-
-    <fieldset><legend>À la date d'arrêt</legend>
-      <label for="services">Services à arrêter <span class="hint">— un nom de service par ligne (ex. Tomcat9, apache2). Arrêtés puis désactivés.</span></label>
-      <textarea id="services" placeholder="Tomcat9"></textarea>
-      <label for="blocked_urls">URL à bloquer <span class="hint">— une par ligne : chemin (/app) ou URL complète (http://serveur:8080/app). « / » bloque tout.</span></label>
-      <textarea id="blocked_urls" placeholder="/"></textarea>
-      <label for="scripts">Commandes / scripts à exécuter <span class="hint">— un par ligne (.bat, .ps1, .sh ou commande)</span></label>
-      <textarea id="scripts" placeholder="C:\Scripts\fin-licence.bat"></textarea>
+    <fieldset><legend>Échéances</legend>
+      <p class="hint" style="margin:4px 0 0">Licence, contrat de support ou abonnement : chaque échéance a ses dates, ses messages et ses actions. L'échéance expire à 00:00 le jour de sa date de fin (heure du serveur).</p>
+      <div id="deadlines"></div>
+      <button type="button" id="add-deadline" style="margin-top:12px">+ Ajouter une échéance</button>
     </fieldset>
 
     <fieldset><legend>Sécurité</legend>
@@ -132,7 +128,7 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 
     <div class="actions">
       <button type="submit" class="primary">Enregistrer</button>
-      <button type="button" id="restore" title="Après renouvellement : réactive et redémarre les services listés">Réactiver les services</button>
+      <button type="button" id="restore" title="Après renouvellement : réactive et redémarre les services des échéances qui ne sont plus arrêtées">Réactiver les services</button>
       <span id="msg"></span>
     </div>
   </form>
@@ -141,14 +137,26 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 (function(){
   var base = location.pathname.replace(/\/(admin)?\/?$/, '');
   var $ = function(id){ return document.getElementById(id); };
-  var fields = ['module_name','software_name','supplier_contact','start_date','end_date','warning_days','message','expired_message'];
-  var lists = ['services','blocked_urls','scripts'];
-  var LABEL = {ok:'Contrat en cours', warning:'Décompte en cours', critical:'Expiration imminente', expired:'Expiré'};
+  var fields = ['module_name','software_name','supplier_contact'];
+  var LABEL = {ok:'En cours', warning:'Décompte en cours', critical:'Expiration imminente', expired:'Expiré'};
+  var KINDS = [['contrat','Contrat de support'],['licence','Licence'],['abonnement','Abonnement']];
+  var DEF = {}; // messages par défaut par type
+  var dls = []; // échéances en cours d'édition
+  var seq = 0;
 
   function fmt(d){ if(!d) return '–'; var p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function kindLabel(k){ for (var i=0;i<KINDS.length;i++) if (KINDS[i][0]===k) return KINDS[i][1]; return KINDS[0][1]; }
   function msg(t, err){ var m=$('msg'); m.textContent=t; m.style.color = err ? 'var(--crit)' : 'var(--ok)'; if(!err) setTimeout(function(){ if(m.textContent===t) m.textContent=''; }, 4000); }
   function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-SmartGUARD':'1','Content-Type':'application/json'}, opt.headers||{}); opt.credentials='same-origin';
     return fetch(base + path, opt).then(function(r){ if(r.status===401){ location.href = base + '/admin'; throw new Error('Session expirée'); } return r.json().catch(function(){ return {}; }).then(function(j){ if(!r.ok) throw new Error(j.error || ('Erreur ' + r.status)); return j; }); }); }
+  function isDefault(m, i){ return Object.keys(DEF).some(function(k){ return DEF[k][i] === m; }); }
+  function stateText(c, ds){
+    if (!c.enabled) return ['Module désactivé', 'off'];
+    if (!ds || !ds.configured) return ['Date à renseigner', 'off'];
+    if (ds.stopped) return ['Arrêtée', 'expired'];
+    return [LABEL[ds.level], ds.level];
+  }
 
   function paint(c){
     var s = c.status;
@@ -162,33 +170,136 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
     var st = $('state');
     var lvl = !c.enabled ? 'off' : s.level;
     st.className = 'pill ' + lvl;
-    st.textContent = !c.enabled ? 'Module désactivé' : (s.configured ? LABEL[s.level] : 'Dates à renseigner');
+    st.textContent = !c.enabled ? 'Module désactivé' : (s.configured ? LABEL[s.level] : 'Échéance à renseigner');
     d.className = 'count ' + (c.enabled ? s.level : 'off');
     $('prog').style.width = (s.progress||0) + '%';
-    $('progtxt').textContent = s.configured && c.start_date ? (s.progress + ' % de la période écoulée') : '';
+    $('progtxt').textContent = s.configured && s.start_date ? (s.progress + ' % de la période écoulée') : '';
     $('s-soft').textContent = c.software_name || '–';
-    $('s-period').textContent = fmt(c.start_date) + ' → ' + fmt(c.end_date);
-    $('s-stop').textContent = c.stop_on_end ? fmt(c.end_date) + ' à 00:00' : 'aucun (pas d’arrêt automatique)';
-    $('s-actions').textContent = c.actions_done_at ? ('exécutées le ' + c.actions_done_at) : (s.stopped ? 'en attente' : 'non déclenchées');
+    $('s-label').textContent = s.configured ? s.label : '–';
+    $('s-period').textContent = s.configured ? fmt(s.start_date) + ' → ' + fmt(s.end_date) : '–';
+    $('s-stop').textContent = !s.configured ? '–' : (s.stop_on_end ? fmt(s.end_date) + ' à 00:00' : 'aucun (pas d’arrêt automatique)');
     var pv = $('preview');
+    pv.style.opacity = 1;
     if (s.show) { pv.hidden = false; pv.className = 'preview ' + s.level; pv.textContent = 'Aperçu : ' + s.message; }
-    else if (c.enabled && s.configured) { pv.hidden = false; pv.className = 'preview'; pv.style.opacity = .7; pv.textContent = 'Le bandeau apparaîtra ' + c.warning_days + ' jours avant l\u2019expiration.'; }
     else pv.hidden = true;
+    var list = s.deadlines || [];
+    $('dlist').innerHTML = list.length > 1 ? list.map(function(x){
+      var t = stateText(c, x);
+      var left = !x.configured ? '–' : (x.expired ? fmt(x.end_date) : (x.days_left + ' j'));
+      return '<div><span><b>' + esc(x.label) + '</b>' + (x.label !== x.kind_label ? ' <span class="hint">· ' + esc(x.kind_label) + '</span>' : '') + '</span><span class="' + t[1] + '">' + esc(left) + ' — ' + esc(t[0]) + '</span></div>';
+    }).join('') : '';
     var src = location.origin + base + '/banner.js';
     $('snip').innerHTML = (c.proxy
       ? '<p class="hint" style="margin-top:0">Mode <b>proxy</b> actif : le bandeau est injecté automatiquement dans les pages de l\u2019application.</p><p class="hint">Pour intégrer le bandeau manuellement (autre serveur), ajoutez avant <code>&lt;/body&gt;</code> :</p>'
       : '<p class="hint" style="margin-top:0">Mode <b>script</b> : ajoutez cette ligne avant <code>&lt;/body&gt;</code> dans la page d\u2019accueil / le gabarit de l\u2019application :</p>')
       + '<pre></pre>';
     $('snip').querySelector('pre').textContent = '<script src="' + src + '" defer><\/script>';
+    paintDeadlineStates(c);
   }
+
+  // ---- Éditeur des échéances
+  function newDeadline(kind){
+    kind = kind || 'contrat';
+    var m = DEF[kind] || ['', ''];
+    return { id:'', kind:kind, label:'', start_date:'', end_date:'', stop_on_end:false, warning_days:30,
+      message:m[0], expired_message:m[1], services:[], blocked_urls:['/'], scripts:[] };
+  }
+  function deadlineHTML(x, i){
+    var k = 'dl' + x._k;
+    return '<details class="dl" data-k="' + x._k + '"' + (x._open ? ' open' : '') + '>' +
+      '<summary><span class="t">' + esc(x.label || kindLabel(x.kind)) + '<small>' + (x.label ? esc(kindLabel(x.kind)) + ' · ' : '') + 'fin le ' + fmt(x.end_date) + (x.stop_on_end ? ' · arrêt à cette date' : '') + '</small></span><span class="pill off" data-state>–</span></summary>' +
+      '<div class="body">' +
+      '<div class="row"><div><label for="' + k + '-kind">Type</label><select id="' + k + '-kind" data-f="kind">' +
+        KINDS.map(function(o){ return '<option value="' + o[0] + '"' + (x.kind === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="' + k + '-label">Libellé <span class="hint">(optionnel)</span></label><input type="text" id="' + k + '-label" data-f="label" maxlength="80" placeholder="ex. Maintenance annuelle" value="' + esc(x.label) + '"></div></div>' +
+      '<div class="row"><div><label for="' + k + '-start">Date de début</label><input type="date" id="' + k + '-start" data-f="start_date" value="' + esc(x.start_date) + '"></div>' +
+      '<div><label for="' + k + '-end">Date de fin <span class="hint">(échéance à 00:00 ce jour-là)</span></label><input type="date" id="' + k + '-end" data-f="end_date" value="' + esc(x.end_date) + '"></div></div>' +
+      '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-f="stop_on_end"' + (x.stop_on_end ? ' checked' : '') + '> Arrêter l\u2019application à la date de fin <span class="hint">(services, adresses bloquées, scripts — décoché : message « expiré » seul)</span></label>' +
+      '<label for="' + k + '-warn">Début du décompte <span class="hint">(jours avant la date de fin — 30 = un mois)</span></label>' +
+      '<input type="number" id="' + k + '-warn" data-f="warning_days" min="1" max="365" style="max-width:140px" value="' + esc(x.warning_days) + '">' +
+      '<label for="' + k + '-msg">Message de décompte <span class="hint">— variables : {jours} {logiciel} {date_fin} {fournisseur}</span></label>' +
+      '<textarea id="' + k + '-msg" data-f="message" style="min-height:56px;font-family:inherit">' + esc(x.message) + '</textarea>' +
+      '<label for="' + k + '-exp">Message après la date de fin</label>' +
+      '<textarea id="' + k + '-exp" data-f="expired_message" style="min-height:56px;font-family:inherit">' + esc(x.expired_message) + '</textarea>' +
+      '<label for="' + k + '-svc">Services à arrêter <span class="hint">— un nom de service par ligne (ex. Tomcat9, apache2). Arrêtés puis désactivés.</span></label>' +
+      '<textarea id="' + k + '-svc" data-f="services" placeholder="Tomcat9">' + esc((x.services||[]).join('\n')) + '</textarea>' +
+      '<label for="' + k + '-url">URL à bloquer <span class="hint">— une par ligne : chemin (/app) ou URL complète (http://serveur:8080/app). « / » bloque tout.</span></label>' +
+      '<textarea id="' + k + '-url" data-f="blocked_urls" placeholder="/">' + esc((x.blocked_urls||[]).join('\n')) + '</textarea>' +
+      '<label for="' + k + '-scr">Commandes / scripts à exécuter <span class="hint">— un par ligne (.bat, .ps1, .sh ou commande)</span></label>' +
+      '<textarea id="' + k + '-scr" data-f="scripts" placeholder="C:\\Scripts\\fin-licence.bat">' + esc((x.scripts||[]).join('\n')) + '</textarea>' +
+      '<p class="hint" data-done style="margin:10px 0 0"></p>' +
+      '<div style="margin-top:12px"><button type="button" class="small danger" data-remove>Supprimer cette échéance</button></div>' +
+      '</div></details>';
+  }
+  function renderDeadlines(){
+    var box = $('deadlines');
+    box.innerHTML = dls.length ? dls.map(deadlineHTML).join('') : '<p class="hint">Aucune échéance : ajoutez-en une pour activer le module.</p>';
+    box.querySelectorAll('details.dl').forEach(function(el){
+      var x = byKey(el.dataset.k);
+      el.addEventListener('toggle', function(){ x._open = el.open; });
+      el.querySelector('[data-remove]').addEventListener('click', function(){
+        if (!confirm('Supprimer l\u2019échéance « ' + (x.label || kindLabel(x.kind)) + ' » ?\n(la suppression sera effective après « Enregistrer »)')) return;
+        collect(); dls = dls.filter(function(y){ return y !== x; }); renderDeadlines(); paintDeadlineStates(last);
+      });
+      el.querySelector('[data-f=kind]').addEventListener('change', function(){
+        var nk = this.value, m = DEF[nk];
+        var ta = el.querySelector('[data-f=message]'), te = el.querySelector('[data-f=expired_message]');
+        if (m && isDefault(ta.value, 0)) ta.value = m[0];
+        if (m && isDefault(te.value, 1)) te.value = m[1];
+      });
+    });
+  }
+  function byKey(k){ for (var i=0;i<dls.length;i++) if (String(dls[i]._k) === String(k)) return dls[i]; return null; }
+  function lines(v){ return v.split('\n').map(function(t){ return t.trim(); }).filter(Boolean); }
+  function collect(){
+    $('deadlines').querySelectorAll('details.dl').forEach(function(el){
+      var x = byKey(el.dataset.k);
+      el.querySelectorAll('[data-f]').forEach(function(f){
+        var k = f.dataset.f;
+        if (f.type === 'checkbox') x[k] = f.checked;
+        else if (k === 'warning_days') x[k] = parseInt(f.value, 10) || 30;
+        else if (k === 'services' || k === 'blocked_urls' || k === 'scripts') x[k] = lines(f.value);
+        else x[k] = f.value.trim();
+      });
+    });
+    return dls.map(function(x){
+      return { id:x.id, kind:x.kind, label:x.label, start_date:x.start_date, end_date:x.end_date, stop_on_end:x.stop_on_end,
+        warning_days:x.warning_days, message:x.message, expired_message:x.expired_message,
+        services:x.services, blocked_urls:x.blocked_urls, scripts:x.scripts };
+    });
+  }
+  var last = null;
+  function paintDeadlineStates(c){
+    if (!c) return;
+    var byId = {};
+    (c.status.deadlines || []).forEach(function(x){ byId[x.id] = x; });
+    $('deadlines').querySelectorAll('details.dl').forEach(function(el){
+      var x = byKey(el.dataset.k), ds = x && x.id ? byId[x.id] : null;
+      var p = el.querySelector('[data-state]'), done = el.querySelector('[data-done]');
+      if (!ds) { p.textContent = 'Nouvelle'; p.className = 'pill off'; done.textContent = ''; return; }
+      var t = stateText(c, ds);
+      p.textContent = t[0] + (ds.configured && !ds.expired ? ' · ' + ds.days_left + ' j' : '');
+      p.className = 'pill ' + t[1];
+      done.textContent = ds.actions_done_at ? ('Actions exécutées le ' + ds.actions_done_at + '.') : (ds.stopped ? 'Actions en attente d\u2019exécution.' : '');
+    });
+  }
+  $('add-deadline').addEventListener('click', function(){
+    collect();
+    var x = newDeadline(dls.length ? 'licence' : 'contrat');
+    x._k = ++seq; x._open = true;
+    dls.push(x); renderDeadlines(); paintDeadlineStates(last);
+  });
 
   function load(fill){
     api('/api/config').then(function(c){
+      last = c;
+      DEF = c.default_messages || DEF;
       if (fill === false) { paint(c); return; }
       fields.forEach(function(k){ $(k).value = c[k] == null ? '' : c[k]; });
-      lists.forEach(function(k){ $(k).value = (c[k]||[]).join('\n'); });
       $('enabled').checked = !!c.enabled;
-      $('stop_on_end').checked = !!c.stop_on_end;
+      dls = (c.deadlines || []).map(function(x){ x._k = ++seq; return x; });
+      if (dls.length === 1) dls[0]._open = true;
+      renderDeadlines();
       paint(c);
     }).catch(function(e){ msg(e.message, true); });
     loadLog(); loadLicense();
@@ -223,17 +334,19 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:8px;paddi
 
   $('f').addEventListener('submit', function(e){
     e.preventDefault();
-    var body = { enabled: $('enabled').checked, stop_on_end: $('stop_on_end').checked, new_password: $('new_password').value };
+    var body = { enabled: $('enabled').checked, new_password: $('new_password').value, deadlines: collect() };
     fields.forEach(function(k){ body[k] = $(k).value; });
-    body.warning_days = parseInt(body.warning_days, 10) || 30;
-    lists.forEach(function(k){ body[k] = $(k).value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean); });
     api('/api/config', {method:'POST', body: JSON.stringify(body)})
       .then(function(){ $('new_password').value=''; msg('Enregistré'); load(); })
       .catch(function(e){ msg(e.message, true); });
   });
   $('restore').addEventListener('click', function(){
-    if (!confirm('Réactiver et redémarrer les services listés ?\n(à utiliser après renouvellement du contrat — pensez à mettre à jour la date de fin)')) return;
-    api('/api/restore', {method:'POST', body:'{}'}).then(function(){ msg('Services relancés — voir le journal'); loadLog(); }).catch(function(e){ msg(e.message, true); });
+    if (!confirm('Réactiver et redémarrer les services des échéances qui ne sont plus arrêtées ?\n(à utiliser après renouvellement — pensez d\u2019abord à mettre à jour la date de fin et à enregistrer)')) return;
+    api('/api/restore', {method:'POST', body:'{}'}).then(function(r){
+      var t = r.restored ? 'Services relancés — voir le journal' : 'Aucun service à relancer';
+      if (r.still_stopped) t += ' (' + r.still_stopped + ' échéance' + (r.still_stopped > 1 ? 's' : '') + ' encore arrêtée' + (r.still_stopped > 1 ? 's' : '') + ' : services non relancés)';
+      msg(t); loadLog();
+    }).catch(function(e){ msg(e.message, true); });
   });
   load();
   setInterval(function(){ load(false); loadLog(); }, 60000);

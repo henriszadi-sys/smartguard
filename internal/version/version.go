@@ -2,4 +2,4 @@
 package version
 
 // Number : version affichée par le programme, l'assistant et les journaux.
-const Number = "1.6.0"
+const Number = "1.7.0"
