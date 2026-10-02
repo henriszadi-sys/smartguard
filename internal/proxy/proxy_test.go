@@ -31,7 +31,10 @@ func TestInjectsBannerAndRewritesRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpdateConfig(func(c *config.Config) error { c.Enabled, c.EndDate = true, "2026-10-05"; return nil }); err != nil {
+	if err := st.UpdateConfig(func(c *config.Config) error {
+		c.Enabled, c.Deadlines = true, []config.Deadline{{EndDate: "2026-10-05"}}
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := New(app.URL, st, t.Logf)

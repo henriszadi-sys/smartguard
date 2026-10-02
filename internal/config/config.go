@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,23 +22,73 @@ import (
 
 const DateLayout = "2006-01-02"
 
+// Types d'échéance suivis par un module.
+const (
+	KindLicence    = "licence"    // licence du logiciel
+	KindContrat    = "contrat"    // contrat de support / maintenance
+	KindAbonnement = "abonnement" // abonnement
+)
+
+// MaxDeadlines : nombre maximal d'échéances par module.
+const MaxDeadlines = 20
+
+// KindLabel renvoie le libellé français d'un type d'échéance.
+func KindLabel(kind string) string {
+	switch kind {
+	case KindLicence:
+		return "Licence"
+	case KindAbonnement:
+		return "Abonnement"
+	default:
+		return "Contrat de support"
+	}
+}
+
+// Deadline : une échéance (licence, contrat de support ou abonnement) avec
+// ses rappels, ses messages et ses actions à la date de fin.
+type Deadline struct {
+	ID             string   `json:"id"`              // identifiant stable (d1, d2…)
+	Kind           string   `json:"kind"`            // licence | contrat | abonnement
+	Label          string   `json:"label"`           // libellé libre (optionnel)
+	StartDate      string   `json:"start_date"`      // AAAA-MM-JJ
+	EndDate        string   `json:"end_date"`        // AAAA-MM-JJ (date de fin ; date d'arrêt si StopOnEnd)
+	StopOnEnd      bool     `json:"stop_on_end"`     // exécuter les actions à 00:00 à la date de fin
+	WarningDays    int      `json:"warning_days"`    // début du décompte (30 = un mois)
+	Message        string   `json:"message"`         // {jours} {logiciel} {date_fin} {fournisseur}
+	ExpiredMessage string   `json:"expired_message"` // message après la date de fin
+	Services       []string `json:"services"`        // services système à arrêter
+	BlockedURLs    []string `json:"blocked_urls"`    // URL / préfixes à bloquer
+	Scripts        []string `json:"scripts"`         // commandes / scripts à exécuter
+}
+
+// Name renvoie le libellé de l'échéance, ou son type à défaut.
+func (d Deadline) Name() string {
+	if strings.TrimSpace(d.Label) != "" {
+		return d.Label
+	}
+	return KindLabel(d.Kind)
+}
+
 // Config : paramètres saisis par l'administrateur.
 type Config struct {
-	ModuleName      string   `json:"module_name"`         // nom affiché du module (renommable)
-	ServiceName     string   `json:"service_name"`        // nom du service système du module
-	SoftwareName    string   `json:"software_name"`       // logiciel contrôlé
-	SupplierContact string   `json:"supplier_contact"`    // coordonnées du fournisseur (optionnel)
-	Enabled         bool     `json:"enabled"`             // activer / désactiver le module
-	StartDate       string   `json:"start_date"`          // AAAA-MM-JJ
-	EndDate         string   `json:"end_date"`            // AAAA-MM-JJ (fin de contrat ; date d'arrêt si StopOnEnd)
-	StopOnEnd       bool     `json:"stop_on_end"`         // exécuter l'arrêt complet à 00:00 à la date de fin
-	StopDate        string   `json:"stop_date,omitempty"` // ancien format : reprise dans EndDate + StopOnEnd puis vidé
-	WarningDays     int      `json:"warning_days"`        // début du décompte (30 = un mois)
-	Message         string   `json:"message"`             // {jours} {logiciel} {date_fin}
-	ExpiredMessage  string   `json:"expired_message"`
-	Services        []string `json:"services"`     // services système à arrêter
-	BlockedURLs     []string `json:"blocked_urls"` // URL / préfixes à bloquer
-	Scripts         []string `json:"scripts"`      // commandes / scripts à exécuter
+	ModuleName      string     `json:"module_name"`      // nom affiché du module (renommable)
+	ServiceName     string     `json:"service_name"`     // nom du service système du module
+	SoftwareName    string     `json:"software_name"`    // logiciel contrôlé
+	SupplierContact string     `json:"supplier_contact"` // coordonnées du fournisseur (optionnel)
+	Enabled         bool       `json:"enabled"`          // activer / désactiver le module
+	Deadlines       []Deadline `json:"deadlines"`        // échéances suivies
+
+	// Ancien format (v1.6, une seule échéance) : lu puis repris dans Deadlines et vidé.
+	StartDate      string   `json:"start_date,omitempty"`
+	EndDate        string   `json:"end_date,omitempty"`
+	StopOnEnd      bool     `json:"stop_on_end,omitempty"`
+	StopDate       string   `json:"stop_date,omitempty"`
+	WarningDays    int      `json:"warning_days,omitempty"`
+	Message        string   `json:"message,omitempty"`
+	ExpiredMessage string   `json:"expired_message,omitempty"`
+	Services       []string `json:"services,omitempty"`
+	BlockedURLs    []string `json:"blocked_urls,omitempty"`
+	Scripts        []string `json:"scripts,omitempty"`
 
 	Listen    string `json:"listen"`     // ex. ":8080"
 	Upstream  string `json:"upstream"`   // ex. "http://127.0.0.1:8081" (vide = pas de proxy)
@@ -48,33 +100,89 @@ type Config struct {
 	AdminPasswordHash string `json:"admin_password_hash"`
 }
 
+// Deadline renvoie l'échéance d'identifiant id.
+func (c Config) Deadline(id string) (Deadline, bool) {
+	for _, d := range c.Deadlines {
+		if d.ID == id {
+			return d, true
+		}
+	}
+	return Deadline{}, false
+}
+
+// ActionRecord : exécution des actions d'une échéance.
+type ActionRecord struct {
+	DoneAt time.Time `json:"done_at"`
+	For    string    `json:"for"` // date de fin concernée
+}
+
 // State : état interne persistant (non modifiable via l'interface).
 type State struct {
-	LastSeen      time.Time `json:"last_seen"`       // anti-retour d'horloge
-	ActionsDoneAt time.Time `json:"actions_done_at"` // zéro = actions pas encore exécutées
-	ActionsFor    string    `json:"actions_for"`     // date d'arrêt concernée
+	LastSeen time.Time               `json:"last_seen"`         // anti-retour d'horloge
+	Actions  map[string]ActionRecord `json:"actions,omitempty"` // par identifiant d'échéance
+
+	// Ancien format (v1.6) : repris dans Actions puis vidé.
+	ActionsDoneAt time.Time `json:"actions_done_at,omitzero"`
+	ActionsFor    string    `json:"actions_for,omitempty"`
+}
+
+// Done indique si les actions de l'échéance d ont déjà été exécutées pour sa date de fin.
+func (st State) Done(d Deadline) (time.Time, bool) {
+	r, ok := st.Actions[d.ID]
+	if !ok || r.DoneAt.IsZero() || r.For != d.EndDate {
+		return time.Time{}, false
+	}
+	return r.DoneAt, true
 }
 
 const DefaultMessage = "L'assistance et le support technique à votre logiciel prendra fin dans {jours} jours, veuillez contacter le fournisseur"
 const DefaultExpiredMessage = "L'assistance et le support technique à votre logiciel {logiciel} ont pris fin le {date_fin}. Veuillez contacter le fournisseur."
 
+var defaultMessages = map[string][2]string{
+	KindContrat: {DefaultMessage, DefaultExpiredMessage},
+	KindLicence: {"La licence de votre logiciel {logiciel} expire dans {jours} jours, veuillez contacter le fournisseur",
+		"La licence de votre logiciel {logiciel} a expiré le {date_fin}. Veuillez contacter le fournisseur."},
+	KindAbonnement: {"L'abonnement à votre logiciel {logiciel} prend fin dans {jours} jours, veuillez contacter le fournisseur",
+		"L'abonnement à votre logiciel {logiciel} a pris fin le {date_fin}. Veuillez contacter le fournisseur."},
+}
+
+// DefaultMessages renvoie les messages par défaut (rappel, échéance passée) d'un type d'échéance.
+func DefaultMessages(kind string) (string, string) {
+	m, ok := defaultMessages[kind]
+	if !ok {
+		m = defaultMessages[KindContrat]
+	}
+	return m[0], m[1]
+}
+
+func isDefaultMessage(msg string, idx int) bool {
+	for _, m := range defaultMessages {
+		if msg == m[idx] {
+			return true
+		}
+	}
+	return false
+}
+
 func Default() Config {
 	return Config{
-		ModuleName:     "SmartGUARD",
-		ServiceName:    "SmartGUARD",
-		SoftwareName:   "Mon logiciel",
-		Enabled:        false,
-		WarningDays:    30,
-		Message:        DefaultMessage,
-		ExpiredMessage: DefaultExpiredMessage,
-		Services:       []string{},
-		BlockedURLs:    []string{},
-		Scripts:        []string{},
-		Listen:         ":8080",
-		Upstream:       "",
-		AdminPath:      "/_smartguard",
-		AdminUser:      "admin",
+		ModuleName:   "SmartGUARD",
+		ServiceName:  "SmartGUARD",
+		SoftwareName: "Mon logiciel",
+		Enabled:      false,
+		Deadlines:    []Deadline{},
+		Listen:       ":8080",
+		Upstream:     "",
+		AdminPath:    "/_smartguard",
+		AdminUser:    "admin",
 	}
+}
+
+// NewDeadline renvoie une échéance du type donné avec ses valeurs par défaut.
+func NewDeadline(kind string) Deadline {
+	d := Deadline{Kind: kind}
+	normalizeDeadline(&d)
+	return d
 }
 
 type Store struct {
@@ -88,10 +196,12 @@ type Store struct {
 func NewStore(cfgPath string) (*Store, error) {
 	s := &Store{cfgPath: cfgPath, statePath: strings.TrimSuffix(cfgPath, filepath.Ext(cfgPath)) + ".state.json"}
 	s.cfg = Default()
+	var raw []byte
 	if b, err := os.ReadFile(cfgPath); err == nil {
 		if err := json.Unmarshal(b, &s.cfg); err != nil {
 			return nil, fmt.Errorf("fichier de configuration invalide %s : %w", cfgPath, err)
 		}
+		raw = b
 	} else if errors.Is(err, os.ErrNotExist) {
 		if err := WriteJSON(cfgPath, s.cfg); err != nil {
 			return nil, err
@@ -103,23 +213,47 @@ func NewStore(cfgPath string) (*Store, error) {
 		_ = json.Unmarshal(b, &s.state)
 	}
 	s.normalize()
+	// Ancien format repris : la configuration migrée est enregistrée.
+	if raw != nil && !strings.Contains(string(raw), `"deadlines"`) {
+		if err := WriteJSON(cfgPath, s.cfg); err != nil {
+			return nil, err
+		}
+		_ = WriteJSON(s.statePath, s.state)
+	}
 	return s, nil
 }
 
 func (s *Store) normalize() {
-	c := &s.cfg
-	// Migration : l'ancienne date d'arrêt devient la date de fin, avec arrêt activé.
-	if c.StopDate != "" {
-		c.EndDate, c.StopOnEnd, c.StopDate = c.StopDate, true, ""
+	normalizeConfig(&s.cfg)
+	migrateState(&s.state, s.cfg)
+}
+
+func normalizeConfig(c *Config) {
+	migrateLegacy(c)
+	if c.Deadlines == nil {
+		c.Deadlines = []Deadline{}
 	}
-	if c.WarningDays <= 0 {
-		c.WarningDays = 30
+	used := map[string]bool{}
+	for i := range c.Deadlines {
+		d := &c.Deadlines[i]
+		d.ID = strings.TrimSpace(d.ID)
+		if d.ID != "" && used[d.ID] {
+			d.ID = "" // doublon : nouvel identifiant
+		}
+		if d.ID != "" {
+			used[d.ID] = true
+		}
 	}
-	if strings.TrimSpace(c.Message) == "" {
-		c.Message = DefaultMessage
-	}
-	if strings.TrimSpace(c.ExpiredMessage) == "" {
-		c.ExpiredMessage = DefaultExpiredMessage
+	n := 0
+	for i := range c.Deadlines {
+		d := &c.Deadlines[i]
+		for d.ID == "" {
+			n++
+			if id := fmt.Sprintf("d%d", n); !used[id] {
+				d.ID, used[id] = id, true
+			}
+		}
+		normalizeDeadline(d)
 	}
 	if c.AdminPath == "" {
 		c.AdminPath = "/_smartguard"
@@ -131,9 +265,70 @@ func (s *Store) normalize() {
 	if c.AdminUser == "" {
 		c.AdminUser = "admin"
 	}
-	c.Services = cleanList(c.Services)
-	c.BlockedURLs = cleanList(c.BlockedURLs)
-	c.Scripts = cleanList(c.Scripts)
+}
+
+func normalizeDeadline(d *Deadline) {
+	d.Kind = strings.ToLower(strings.TrimSpace(d.Kind))
+	if _, ok := defaultMessages[d.Kind]; !ok {
+		d.Kind = KindContrat
+	}
+	d.Label = strings.TrimSpace(d.Label)
+	d.StartDate, d.EndDate = strings.TrimSpace(d.StartDate), strings.TrimSpace(d.EndDate)
+	if d.WarningDays <= 0 {
+		d.WarningDays = 30
+	}
+	msg, exp := DefaultMessages(d.Kind)
+	// Message vide ou message par défaut d'un autre type : message par défaut du type.
+	if strings.TrimSpace(d.Message) == "" || isDefaultMessage(d.Message, 0) {
+		d.Message = msg
+	}
+	if strings.TrimSpace(d.ExpiredMessage) == "" || isDefaultMessage(d.ExpiredMessage, 1) {
+		d.ExpiredMessage = exp
+	}
+	d.Services = cleanList(d.Services)
+	d.BlockedURLs = cleanList(d.BlockedURLs)
+	d.Scripts = cleanList(d.Scripts)
+}
+
+// migrateLegacy reprend l'échéance unique de l'ancien format (v1.6) comme
+// première échéance, de type « contrat de support », puis vide les anciens champs.
+func migrateLegacy(c *Config) {
+	// L'ancienne date d'arrêt devient la date de fin, avec arrêt activé.
+	if c.StopDate != "" {
+		c.EndDate, c.StopOnEnd = c.StopDate, true
+	}
+	legacy := c.StartDate != "" || c.EndDate != "" || len(cleanList(c.Services)) > 0 ||
+		len(cleanList(c.BlockedURLs)) > 0 || len(cleanList(c.Scripts)) > 0
+	if legacy && len(c.Deadlines) == 0 {
+		c.Deadlines = []Deadline{{
+			Kind: KindContrat, StartDate: c.StartDate, EndDate: c.EndDate, StopOnEnd: c.StopOnEnd,
+			WarningDays: c.WarningDays, Message: c.Message, ExpiredMessage: c.ExpiredMessage,
+			Services: c.Services, BlockedURLs: c.BlockedURLs, Scripts: c.Scripts,
+		}}
+	}
+	c.StartDate, c.EndDate, c.StopOnEnd, c.StopDate = "", "", false, ""
+	c.WarningDays, c.Message, c.ExpiredMessage = 0, "", ""
+	c.Services, c.BlockedURLs, c.Scripts = nil, nil, nil
+}
+
+// migrateState reprend l'ancien suivi des actions (une seule échéance) pour
+// l'échéance de même date de fin, afin de ne pas réexécuter les actions.
+func migrateState(st *State, c Config) {
+	if st.ActionsDoneAt.IsZero() && st.ActionsFor == "" {
+		return
+	}
+	for _, d := range c.Deadlines {
+		if d.EndDate == st.ActionsFor && !st.ActionsDoneAt.IsZero() {
+			if _, ok := st.Actions[d.ID]; !ok {
+				if st.Actions == nil {
+					st.Actions = map[string]ActionRecord{}
+				}
+				st.Actions[d.ID] = ActionRecord{DoneAt: st.ActionsDoneAt, For: st.ActionsFor}
+			}
+			break
+		}
+	}
+	st.ActionsDoneAt, st.ActionsFor = time.Time{}, ""
 }
 
 func cleanList(in []string) []string {
@@ -149,19 +344,37 @@ func cleanList(in []string) []string {
 func (s *Store) Config() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.cfg
+	return s.cfg.Clone()
+}
+
+// Clone renvoie une copie indépendante (listes comprises) de la configuration.
+func (c Config) Clone() Config {
+	if c.Deadlines != nil {
+		ds := make([]Deadline, len(c.Deadlines))
+		for i, d := range c.Deadlines {
+			d.Services = slices.Clone(d.Services)
+			d.BlockedURLs = slices.Clone(d.BlockedURLs)
+			d.Scripts = slices.Clone(d.Scripts)
+			ds[i] = d
+		}
+		c.Deadlines = ds
+	}
+	c.Services, c.BlockedURLs, c.Scripts = slices.Clone(c.Services), slices.Clone(c.BlockedURLs), slices.Clone(c.Scripts)
+	return c
 }
 
 func (s *Store) State() State {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.state
+	st := s.state
+	st.Actions = maps.Clone(st.Actions)
+	return st
 }
 
 func (s *Store) UpdateConfig(fn func(c *Config) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c := s.cfg
+	c := s.cfg.Clone()
 	if err := fn(&c); err != nil {
 		return err
 	}
@@ -183,24 +396,40 @@ func (s *Store) UpdateState(fn func(st *State)) {
 }
 
 func Validate(c Config) error {
-	if c.StartDate != "" {
-		if _, err := time.ParseInLocation(DateLayout, c.StartDate, time.Local); err != nil {
+	if len(c.Deadlines) > MaxDeadlines {
+		return fmt.Errorf("%d échéances au maximum par module", MaxDeadlines)
+	}
+	ids := map[string]bool{}
+	for i, d := range c.Deadlines {
+		if err := ValidateDeadline(d); err != nil {
+			return fmt.Errorf("échéance %d (%s) : %w", i+1, d.Name(), err)
+		}
+		if d.ID != "" && ids[d.ID] {
+			return fmt.Errorf("identifiant d'échéance en double : %s", d.ID)
+		}
+		ids[d.ID] = true
+	}
+	if c.Enabled && len(c.Deadlines) == 0 {
+		return fmt.Errorf("ajoutez au moins une échéance avant d'activer le module")
+	}
+	return nil
+}
+
+// ValidateDeadline vérifie les dates d'une échéance.
+func ValidateDeadline(d Deadline) error {
+	if d.StartDate != "" {
+		if _, err := time.ParseInLocation(DateLayout, d.StartDate, time.Local); err != nil {
 			return fmt.Errorf("date de début invalide (format AAAA-MM-JJ)")
 		}
 	}
-	if c.EndDate != "" {
-		if _, err := time.ParseInLocation(DateLayout, c.EndDate, time.Local); err != nil {
-			return fmt.Errorf("date de fin invalide (format AAAA-MM-JJ)")
-		}
+	if d.EndDate == "" {
+		return fmt.Errorf("renseignez la date de fin")
 	}
-	if c.StopOnEnd && c.EndDate == "" {
-		return fmt.Errorf("renseignez la date de fin pour activer l'arrêt à cette date")
+	if _, err := time.ParseInLocation(DateLayout, d.EndDate, time.Local); err != nil {
+		return fmt.Errorf("date de fin invalide (format AAAA-MM-JJ)")
 	}
-	if c.StartDate != "" && c.EndDate != "" && c.EndDate < c.StartDate {
+	if d.StartDate != "" && d.EndDate < d.StartDate {
 		return fmt.Errorf("la date de fin doit être postérieure à la date de début")
-	}
-	if c.Enabled && c.EndDate == "" {
-		return fmt.Errorf("renseignez la date de fin avant d'activer le module")
 	}
 	return nil
 }

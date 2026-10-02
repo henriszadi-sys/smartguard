@@ -21,13 +21,14 @@ func newWatcher(t *testing.T, end string, stopOnEnd bool, clk *fakeClock) (*Watc
 		t.Fatal(err)
 	}
 	if err := st.UpdateConfig(func(c *config.Config) error {
-		c.Enabled, c.StartDate, c.EndDate, c.StopOnEnd = true, "2026-01-01", end, stopOnEnd
+		c.Enabled = true
+		c.Deadlines = []config.Deadline{{Kind: config.KindContrat, StartDate: "2026-01-01", EndDate: end, StopOnEnd: stopOnEnd}}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	runs := 0
-	return &Watcher{Store: st, Now: clk.Now, Expire: func(config.Config) { runs++ }}, st, &runs
+	return &Watcher{Store: st, Now: clk.Now, Expire: func(config.Config, config.Deadline) { runs++ }}, st, &runs
 }
 
 func TestActionsRunOnceAtExpiry(t *testing.T) {
@@ -57,7 +58,7 @@ func TestMissedActionsRunOnceAfterRestart(t *testing.T) {
 	if *runs != 1 {
 		t.Fatalf("actions exécutées %d fois, attendu 1", *runs)
 	}
-	if st.State().ActionsFor != "2026-10-05" {
+	if r := st.State().Actions["d1"]; r.For != "2026-10-05" || r.DoneAt.IsZero() {
 		t.Fatalf("échéance traitée non mémorisée : %+v", st.State())
 	}
 }
@@ -84,7 +85,7 @@ func TestRenewalArmsNextExpiry(t *testing.T) {
 	clk := &fakeClock{at("2026-10-05 00:00:00")}
 	w, st, runs := newWatcher(t, "2026-10-05", true, clk)
 	w.Tick()
-	if err := st.UpdateConfig(func(c *config.Config) error { c.EndDate = "2027-10-05"; return nil }); err != nil {
+	if err := st.UpdateConfig(func(c *config.Config) error { c.Deadlines[0].EndDate = "2027-10-05"; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	clk.t = at("2026-11-01 09:00:00")
@@ -144,7 +145,7 @@ func TestActionsRunAtContractEnd(t *testing.T) {
 	}
 }
 
-// Ancien config.json : stop_date devient la date de fin et l'arrêt est activé.
+// Ancien config.json : stop_date devient la date de fin de l'échéance migrée, arrêt activé.
 func TestLegacyStopDateMigrates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	legacy := `{"enabled":true,"start_date":"2026-01-01","end_date":"2026-10-01","stop_date":"2026-11-15"}`
@@ -156,7 +157,43 @@ func TestLegacyStopDateMigrates(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := st.Config()
-	if c.EndDate != "2026-11-15" || !c.StopOnEnd || c.StopDate != "" {
+	if len(c.Deadlines) != 1 || c.Deadlines[0].EndDate != "2026-11-15" || !c.Deadlines[0].StopOnEnd || c.StopDate != "" {
 		t.Fatalf("migration incorrecte : %+v", c)
+	}
+}
+
+// Chaque échéance exécute ses propres actions, une seule fois, à sa propre date.
+func TestEachDeadlineRunsItsOwnActionsOnce(t *testing.T) {
+	clk := &fakeClock{at("2026-10-01 08:00:00")}
+	st, err := config.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateConfig(func(c *config.Config) error {
+		c.Enabled = true
+		c.Deadlines = []config.Deadline{
+			{Kind: config.KindLicence, EndDate: "2026-10-05", StopOnEnd: true, Services: []string{"lic"}},
+			{Kind: config.KindContrat, EndDate: "2026-10-10", StopOnEnd: true, Services: []string{"support"}},
+			{Kind: config.KindAbonnement, EndDate: "2026-10-03", StopOnEnd: false},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var ran []string
+	w := &Watcher{Store: st, Now: clk.Now, Expire: func(_ config.Config, d config.Deadline) { ran = append(ran, d.ID) }}
+	w.Tick()
+	clk.t = at("2026-10-05 00:00:00")
+	w.Tick()
+	w.Tick()
+	if len(ran) != 1 || ran[0] != "d1" {
+		t.Fatalf("licence seule attendue : %v", ran)
+	}
+	// Redémarrage après la seconde échéance : rattrapage de d2 uniquement.
+	clk.t = at("2026-10-12 09:00:00")
+	(&Watcher{Store: st, Now: clk.Now, Expire: w.Expire}).Tick()
+	w.Tick()
+	if len(ran) != 2 || ran[1] != "d2" {
+		t.Fatalf("rattrapage de d2 attendu une fois : %v", ran)
 	}
 }

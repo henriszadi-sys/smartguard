@@ -10,9 +10,9 @@ import (
 // actions d'arrêt, y compris celles manquées pendant un arrêt du service.
 type Watcher struct {
 	Store    *config.Store
-	Now      func() time.Time      // horloge injectable (time.Now par défaut)
-	Expire   func(c config.Config) // actions à la date d'arrêt
-	Interval time.Duration         // 30 s par défaut
+	Now      func() time.Time                         // horloge injectable (time.Now par défaut)
+	Expire   func(c config.Config, d config.Deadline) // actions d'une échéance à sa date d'arrêt
+	Interval time.Duration                            // 30 s par défaut
 }
 
 func (w *Watcher) now() time.Time {
@@ -41,7 +41,8 @@ func (w *Watcher) Run(stop <-chan struct{}) {
 	}
 }
 
-// Tick mémorise l'heure vue et exécute les actions si l'échéance est atteinte.
+// Tick mémorise l'heure vue et exécute, une seule fois par date de fin,
+// les actions de chaque échéance arrêtée.
 func (w *Watcher) Tick() {
 	st := w.Store.State()
 	now := w.now()
@@ -53,11 +54,18 @@ func (w *Watcher) Tick() {
 	if !c.Enabled {
 		return
 	}
-	s := ComputeStatus(c, st, now)
-	if s.Stopped && (st.ActionsDoneAt.IsZero() || st.ActionsFor != c.EndDate) {
-		w.Store.UpdateState(func(x *config.State) { x.ActionsDoneAt = now; x.ActionsFor = c.EndDate })
+	for _, d := range c.Deadlines {
+		if _, done := st.Done(d); done || !ComputeDeadline(c, d, st, now).Stopped {
+			continue
+		}
+		w.Store.UpdateState(func(x *config.State) {
+			if x.Actions == nil {
+				x.Actions = map[string]config.ActionRecord{}
+			}
+			x.Actions[d.ID] = config.ActionRecord{DoneAt: now, For: d.EndDate}
+		})
 		if w.Expire != nil {
-			w.Expire(c)
+			w.Expire(c, d)
 		}
 	}
 }

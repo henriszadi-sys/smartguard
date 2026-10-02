@@ -32,8 +32,9 @@ func cfg(end string) config.Config {
 	c := config.Default()
 	c.Enabled = true
 	c.SoftwareName = "Kelio"
-	c.StartDate = "2026-01-01"
-	c.EndDate = end
+	d := config.NewDeadline(config.KindContrat)
+	d.ID, d.StartDate, d.EndDate = "d1", "2026-01-01", end
+	c.Deadlines = []config.Deadline{d}
 	return c
 }
 
@@ -129,8 +130,7 @@ func TestStatusUsesServerTimeZone(t *testing.T) {
 }
 
 func TestIsBlocked(t *testing.T) {
-	c := config.Default()
-	c.BlockedURLs = []string{"/kelio", "http://srv:8080/paie", "https://intranet/rh"}
+	patterns := []string{"/kelio", "http://srv:8080/paie", "https://intranet/rh"}
 	cases := []struct {
 		host, path string
 		want       bool
@@ -143,7 +143,7 @@ func TestIsBlocked(t *testing.T) {
 		{"srv:8080", "", false},
 	}
 	for _, tc := range cases {
-		if got := IsBlocked(c, tc.host, tc.path); got != tc.want {
+		if got := IsBlocked(patterns, tc.host, tc.path); got != tc.want {
 			t.Errorf("IsBlocked(%s, %s) = %v, attendu %v", tc.host, tc.path, got, tc.want)
 		}
 	}
@@ -154,7 +154,7 @@ func TestStopOnEndFollowsContractEnd(t *testing.T) {
 	if s := ComputeStatus(c, config.State{}, at("2026-12-01 10:00:00")); !s.Expired || s.Stopped {
 		t.Fatalf("sans option d'arrêt : %+v", s)
 	}
-	c.StopOnEnd = true
+	c.Deadlines[0].StopOnEnd = true
 	if s := ComputeStatus(c, config.State{}, at("2026-10-04 23:59:59")); s.Expired || s.Stopped {
 		t.Fatalf("veille de la fin : %+v", s)
 	}
@@ -165,5 +165,51 @@ func TestStopOnEndFollowsContractEnd(t *testing.T) {
 	seen := config.State{LastSeen: at("2026-10-05 00:10:00")}
 	if s := ComputeStatus(c, seen, at("2026-09-25 08:00:00")); !s.Stopped {
 		t.Fatalf("recul d'horloge : arrêt repoussé : %+v", s)
+	}
+}
+
+// Plusieurs échéances : chacune a son décompte ; le bandeau reprend la plus urgente.
+func TestMultipleDeadlinesMostUrgent(t *testing.T) {
+	c := cfg("2026-12-31")
+	lic := config.NewDeadline(config.KindLicence)
+	lic.ID, lic.EndDate = "d2", "2026-10-10"
+	abo := config.NewDeadline(config.KindAbonnement)
+	abo.ID, abo.EndDate, abo.StopOnEnd = "d3", "2026-10-05", false
+	c.Deadlines = append(c.Deadlines, lic, abo)
+
+	s := ComputeStatus(c, config.State{}, at("2026-10-01 10:00:00"))
+	if len(s.Deadlines) != 3 || s.DeadlineID != "d3" || s.DaysLeft != 4 || s.Kind != config.KindAbonnement {
+		t.Fatalf("plus urgente attendue d3 : %+v", s)
+	}
+	if !strings.Contains(s.Message, "abonnement") || s.Deadlines[0].Show {
+		t.Fatalf("messages par type : %+v", s)
+	}
+	if s.Deadlines[1].DaysLeft != 9 || !s.Deadlines[1].Show || !strings.Contains(s.Deadlines[1].Message, "licence") {
+		t.Fatalf("licence : %+v", s.Deadlines[1])
+	}
+
+	// Abonnement passé sans arrêt, licence arrêtée : l'arrêt prime.
+	c.Deadlines[1].StopOnEnd = true
+	s = ComputeStatus(c, config.State{}, at("2026-10-11 10:00:00"))
+	if s.DeadlineID != "d2" || !s.Stopped || s.Deadlines[2].Stopped || !s.Deadlines[2].Expired {
+		t.Fatalf("arrêt de la licence attendu en tête : %+v", s)
+	}
+}
+
+// Seules les adresses des échéances arrêtées sont bloquées.
+func TestBlocksOnlyStoppedDeadlines(t *testing.T) {
+	c := cfg("2026-10-05")
+	c.Deadlines[0].StopOnEnd = true
+	c.Deadlines[0].BlockedURLs = []string{"/kelio"}
+	lic := config.NewDeadline(config.KindLicence)
+	lic.ID, lic.EndDate, lic.StopOnEnd, lic.BlockedURLs = "d2", "2027-01-01", true, []string{"/paie"}
+	c.Deadlines = append(c.Deadlines, lic)
+	s := ComputeStatus(c, config.State{}, at("2026-10-06 10:00:00"))
+	if !Blocks(c, s, "srv", "/kelio/accueil") || Blocks(c, s, "srv", "/paie") {
+		t.Fatalf("blocage : seul /kelio doit être bloqué")
+	}
+	c.Enabled = false
+	if Blocks(c, ComputeStatus(c, config.State{}, at("2026-10-06 10:00:00")), "srv", "/kelio") {
+		t.Fatal("module désactivé : adresse bloquée")
 	}
 }

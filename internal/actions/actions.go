@@ -103,28 +103,38 @@ func runScriptOnce(cmdline string) (string, error) {
 // Logf : fonction de journalisation utilisée par les actions.
 type Logf func(format string, args ...any)
 
-// Enforce exécute les actions d'arrêt (appelée une seule fois par date d'arrêt).
-func Enforce(c config.Config, logf Logf) {
-	logf("ARRÊT PLANIFIÉ atteint pour « %s » (fin de contrat et arrêt : %s) — exécution des actions", c.SoftwareName, c.EndDate)
-	for _, s := range c.Services {
+// Enforce exécute les actions d'arrêt d'une échéance (une seule fois par date de fin).
+func Enforce(c config.Config, d config.Deadline, logf Logf) {
+	logf("ARRÊT PLANIFIÉ atteint pour « %s » — échéance « %s » (date de fin et d'arrêt : %s) — exécution des actions",
+		c.SoftwareName, d.Name(), d.EndDate)
+	for _, s := range d.Services {
 		for _, line := range StopService(s) {
 			logf("  service %s : %s", s, line)
 		}
 	}
-	for _, sc := range c.Scripts {
+	for _, sc := range d.Scripts {
 		logf("  script : %s", RunScript(sc))
 	}
-	if len(c.BlockedURLs) > 0 {
-		logf("  URL bloquées : %s", strings.Join(c.BlockedURLs, ", "))
+	if len(d.BlockedURLs) > 0 {
+		logf("  URL bloquées : %s", strings.Join(d.BlockedURLs, ", "))
 	}
 }
 
-// Restore réactive les services après renouvellement (action explicite de l'administrateur).
-func Restore(c config.Config, logf Logf) {
+// Restore réactive les services des échéances indiquées après renouvellement
+// (action explicite de l'administrateur). Un service commun à plusieurs
+// échéances n'est relancé qu'une fois.
+func Restore(ds []config.Deadline, logf Logf) {
 	logf("RÉACTIVATION des services demandée par l'administrateur")
-	for _, s := range c.Services {
-		for _, line := range RestoreService(s) {
-			logf("  service %s : %s", s, line)
+	seen := map[string]bool{}
+	for _, d := range ds {
+		for _, s := range d.Services {
+			if seen[strings.ToLower(s)] {
+				continue
+			}
+			seen[strings.ToLower(s)] = true
+			for _, line := range RestoreService(s) {
+				logf("  service %s (échéance « %s ») : %s", s, d.Name(), line)
+			}
 		}
 	}
 }
