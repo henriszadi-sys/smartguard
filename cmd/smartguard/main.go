@@ -84,7 +84,7 @@ func (p *program) Stop(s service.Service) error {
 // La clé complète n'est jamais affichée ni journalisée.
 func runLicense(lic *license.Manager, logger *logging.Logger, args []string) {
 	printStatus := func(s license.Status) {
-		fmt.Printf("Poste       : %s\nLicence     : %s\nActivée le  : %s\nÉtat        : %s — %s\n",
+		fmt.Printf("Serveur     : %s\nLicence     : %s\nActivée le  : %s\nÉtat        : %s — %s\n",
 			s.MachineID, orDash(s.MaskedKey), orDash(s.ActivatedAt), s.State, s.Message)
 	}
 	switch {
@@ -132,7 +132,7 @@ Commandes :
   start | stop | restart   piloter le service
   status         afficher l'état du décompte
   check          diagnostic : configuration, port, application
-  license [activate <clé> | deactivate]   état, activation ou désactivation de la licence du poste
+  license [activate <clé> | deactivate]   licence SmartGUARD du serveur (exigée pour installer)
   set-password   définir le mot de passe administrateur
 
 Options :
@@ -227,7 +227,16 @@ func main() {
 		if err := s.Run(); err != nil {
 			log.Fatalf("ERREUR exécution du service « %s » : %v", svcName, err)
 		}
-	case "install", "uninstall", "start", "stop", "restart":
+	case "install":
+		// Sans licence valide, le module ne s'installe pas (cahier des charges, section 4).
+		if ls := lic.Status(); ls.State != license.StateActive {
+			log.Fatalf("installation refusée : %s\nActivez d'abord la licence du serveur : smartguard license activate <clé>", ls.Message)
+		}
+		if err := service.Control(s, cmd); err != nil {
+			log.Fatalf("%s : %v (droits administrateur / root requis)", cmd, err)
+		}
+		fmt.Printf("Service « %s » : %s OK\n", svcName, cmd)
+	case "uninstall", "start", "stop", "restart":
 		if err := service.Control(s, cmd); err != nil {
 			log.Fatalf("%s : %v (droits administrateur / root requis)", cmd, err)
 		}

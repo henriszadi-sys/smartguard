@@ -24,6 +24,7 @@ import (
 	"github.com/kardianos/service"
 
 	"smartguard/internal/config"
+	"smartguard/internal/license"
 	"smartguard/internal/logging"
 	"smartguard/internal/platform"
 	"smartguard/internal/scheduler"
@@ -271,6 +272,7 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 		"installs":     views,
 		"dir_template": platform.DefaultInstallDir("{NOM}"),
 		"messages":     defaultMessages(),
+		"license":      licenseManager().Status(),
 	})
 }
 
@@ -372,6 +374,29 @@ type installReq struct {
 	InstallDir      string   `json:"install_dir"`
 	Password        string   `json:"password"`
 	Shortcut        bool     `json:"shortcut"`
+	LicenseKey      string   `json:"license_key"` // clé de licence SmartGUARD du serveur (saisie ou fichier)
+}
+
+// RequireLicenseOnUpdate : la mise à jour d'un module déjà installé exige-t-elle
+// aussi une licence active ? Non par défaut (point à valider) : un module installé
+// avant la licence obligatoire peut être mis à jour, la licence restant signalée
+// comme à activer.
+const RequireLicenseOnUpdate = false
+
+// licenseManager : licence du serveur (remplaçable dans les tests).
+var licenseManager = func() *license.Manager { return license.NewManager("") }
+
+// checkLicense applique la règle « sans licence valide, le module ne s'installe pas ».
+// Renvoie le libellé de l'étape pour le journal d'installation.
+func checkLicense(lm *license.Manager, key string, existing bool) (string, error) {
+	st, err := lm.RequireForInstall(key)
+	switch {
+	case err == nil:
+		return "licence " + st.MaskedKey + " active sur ce serveur", nil
+	case existing && !RequireLicenseOnUpdate && errors.Is(err, license.ErrLicenseRequired):
+		return "mise à jour sans licence SmartGUARD : licence à activer depuis l'administration", nil
+	}
+	return "", err
 }
 
 type step struct {
@@ -485,6 +510,11 @@ func doInstall(q installReq) (map[string]any, error) {
 		WarningDays: q.WarningDays, Message: q.Message, ExpiredMessage: q.ExpiredMessage,
 		Services: q.Services, BlockedURLs: q.BlockedURLs, Scripts: q.Scripts}
 	if err := config.ValidateDeadline(first); err != nil {
+		return res, err
+	}
+	// Licence SmartGUARD du serveur : contrôlée avant toute copie de fichier.
+	licDetail, licErr := checkLicense(licenseManager(), q.LicenseKey, existing)
+	if err := add("Licence SmartGUARD", licErr, licDetail); err != nil {
 		return res, err
 	}
 	dir := strings.TrimSpace(q.InstallDir)

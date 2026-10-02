@@ -133,7 +133,7 @@ function blank(){
     kind:'contrat', label:'', _others:0,
     start_date: today(), end_date:'', stop_on_end:false, warning_days:30, message: info.messages.contrat[0], expired_message: info.messages.contrat[1],
     services:[], blocked_urls:['/'], scripts:[], mode:'proxy', port:8080, upstream:'http://127.0.0.1:8081',
-    install_dir:'', password:'', password2:'', shortcut:true, _nameTouched:false, _dirTouched:false };
+    install_dir:'', password:'', password2:'', shortcut:true, license_key:'', _nameTouched:false, _dirTouched:false };
 }
 function today(){ var t=new Date(); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
 function fr(x){ if(!x) return '–'; var p=x.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
@@ -346,7 +346,14 @@ function listEditor(p, key){
 // ---- étape 5
 function renderSecurity(c){
   if(!d._dirTouched) d.install_dir = dirFor(d.module_name);
-  c.innerHTML = '<h1>Sécurité et installation</h1><p class="lead">Mot de passe de la page d\u2019administration (pour modifier les dates plus tard).</p>' +
+  var lic = info.license || {};
+  var licBlock = lic.state === 'active'
+    ? '<div class="box" style="padding:12px"><b>Licence SmartGUARD</b> : active sur ce serveur ('+esc(lic.masked_key||'')+'). Elle couvre ce module.</div>'
+    : '<label for="license_key">Clé de licence SmartGUARD de ce serveur '+(d.existing?'<span class="hint">(mise à jour : facultatif, à activer ensuite depuis l\u2019administration)</span>':'<span class="hint">— obligatoire pour installer</span>')+'</label>' +
+      '<textarea id="license_key" spellcheck="false" autocomplete="off" style="min-height:52px;font-family:Consolas,Menlo,monospace;font-size:13px" placeholder="'+(lic.signed_mode?'SGL1.… (clé fournie par l\u2019éditeur)':'SGRD-XXXX-XXXX-XXXX-XXXX')+'">'+esc(d.license_key)+'</textarea>' +
+      '<p class="hint" style="margin-top:6px">Une licence par serveur, pour tous les modules SmartGUARD du serveur. Vous pouvez aussi <label style="display:inline;font-weight:600;cursor:pointer;color:var(--accent)">charger le fichier de licence<input type="file" id="license_file" accept=".txt,.sglic,.lic,text/plain" hidden></label>.</p>' +
+      (lic.state === 'other_machine' ? '<div class="error">La licence enregistrée est liée à un autre serveur : désactivez-la, puis saisissez une licence pour ce serveur.</div>' : '');
+  c.innerHTML = '<h1>Sécurité et installation</h1><p class="lead">Licence SmartGUARD du serveur et mot de passe de la page d\u2019administration.</p>' + licBlock +
     '<div class="row"><div><label for="password">Mot de passe administrateur '+(d.existing?'<span class="hint">(vide = inchangé)</span>':'')+'</label><input type="password" id="password" autocomplete="new-password" value="'+esc(d.password)+'"></div>' +
     '<div><label for="password2">Confirmation</label><input type="password" id="password2" autocomplete="new-password" value="'+esc(d.password2)+'"></div></div>' +
     '<p class="hint" style="margin-top:6px">8 caractères minimum. Identifiant : <b>admin</b></p>' +
@@ -357,6 +364,13 @@ function renderSecurity(c){
   $('#password').oninput=function(){ d.password=this.value; }; $('#password2').oninput=function(){ d.password2=this.value; };
   $('#install_dir').oninput=function(){ d.install_dir=this.value; d._dirTouched=true; };
   var sc=$('#shortcut'); if(sc) sc.onchange=function(){ d.shortcut=this.checked; };
+  var lk=$('#license_key'); if(lk) lk.oninput=function(){ d.license_key=this.value.trim(); };
+  var lf=$('#license_file'); if(lf) lf.onchange=function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    if(f.size>16384){ showErr('Fichier de licence trop volumineux.'); return; }
+    var r=new FileReader(); r.onload=function(){ var k=String(r.result||'').replace(/\s+/g,' ').trim().split(' ').filter(function(x){ return /^(SGL1\.|SGRD-)/i.test(x); })[0]||'';
+      if(!k){ showErr('Aucune clé de licence trouvée dans ce fichier.'); return; } d.license_key=k; lk.value=k; showErr(''); }; r.readAsText(f);
+  };
 }
 
 // ---- étape 6
@@ -368,6 +382,7 @@ function renderRecap(c){
     ['État', d.enabled?'Activé':'Désactivé'],
     ['Affichage', d.mode==='proxy' ? 'Automatique — application : '+d.upstream : 'Par une ligne de code'],
     ['Adresse du module', 'http://'+info.hostname+':'+d.port],
+    ['Licence SmartGUARD', (info.license||{}).state==='active' ? 'active sur ce serveur ('+((info.license||{}).masked_key||'')+')' : (d.license_key ? 'activée à l\u2019installation' : 'à activer depuis l\u2019administration')],
     ['Services à arrêter', d.services.join(', ')||'aucun'], ['Adresses à bloquer', d.blocked_urls.join(', ')||'aucune'], ['Scripts', d.scripts.join(', ')||'aucun'],
     ['Dossier', d.install_dir]
   ];
@@ -380,7 +395,8 @@ function validateStep(){
   if (step===0){ if(!d.software_name.trim()) return 'Indiquez le nom du logiciel.'; if(!slug(d.module_name)) return 'Indiquez le nom du module (lettres, chiffres, tirets).'; }
   if (step===1){ if(!d.end_date) return 'Indiquez la date de fin du contrat.'; if(d.start_date && d.end_date<d.start_date) return 'La date de fin doit être après la date de début.'; if(!(d.warning_days>0)) return 'Le début du décompte doit être un nombre de jours.'; }
   if (step===2){ if(!(d.port>0 && d.port<65536)) return 'Port invalide.'; if(d._portOk===false) return 'Ce port est déjà utilisé : choisissez-en un autre (ex. 8090).'; if(d.mode==='proxy' && !/^https?:\/\/[^\/]+/.test(d.upstream)) return 'Indiquez l\u2019adresse de l\u2019application, ex. http://127.0.0.1:8081'; }
-  if (step===4){ if(!d.existing || d.password){ if(d.password.length<8) return 'Le mot de passe doit contenir au moins 8 caractères.'; if(d.password!==d.password2) return 'Les deux mots de passe ne correspondent pas.'; } if(!d.install_dir.trim()) return 'Indiquez le dossier d\u2019installation.'; }
+  if (step===4){ var ls=(info.license||{}).state; if(ls!=='active' && !d.existing && !d.license_key) return 'Saisissez la clé de licence SmartGUARD de ce serveur : sans licence valide, le module ne s\u2019installe pas.'; if(ls==='other_machine' && !d.existing) return 'La licence enregistrée est liée à un autre serveur : désactivez-la d\u2019abord.';
+    if(!d.existing || d.password){ if(d.password.length<8) return 'Le mot de passe doit contenir au moins 8 caractères.'; if(d.password!==d.password2) return 'Les deux mots de passe ne correspondent pas.'; } if(!d.install_dir.trim()) return 'Indiquez le dossier d\u2019installation.'; }
   return '';
 }
 function showErr(m){ var e=$('#err'); if(e) e.innerHTML = m ? '<div class="error">'+esc(m)+'</div>' : ''; }

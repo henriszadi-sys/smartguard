@@ -74,10 +74,10 @@ button.danger{color:var(--crit)}
       <div class="dlist" id="dlist"></div>
     </section>
     <section class="card" id="license-card">
-      <h2>Licence / poste</h2>
+      <h2>Licence SmartGUARD du serveur</h2>
       <span class="pill off" id="lic-state" style="margin-top:0">–</span>
       <dl class="kv">
-        <dt>Poste</dt><dd id="lic-machine"><code>–</code></dd>
+        <dt>Serveur</dt><dd id="lic-machine"><code>–</code></dd>
         <dt>Licence</dt><dd id="lic-key" style="word-break:break-all">–</dd>
         <dt>Titulaire</dt><dd id="lic-customer">–</dd>
         <dt>Activée le</dt><dd id="lic-date">–</dd>
@@ -86,11 +86,11 @@ button.danger{color:var(--crit)}
       <label for="lic-input">Clé de licence <span class="hint" id="lic-hint">(SGRD-XXXX-XXXX-XXXX-XXXX)</span></label>
       <input type="text" id="lic-input" maxlength="400" autocomplete="off" spellcheck="false" placeholder="SGRD-XXXX-XXXX-XXXX-XXXX">
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">
-        <button type="button" class="primary" id="lic-activate">Activer sur ce poste</button>
+        <button type="button" class="primary" id="lic-activate">Activer sur ce serveur</button>
         <button type="button" id="lic-deactivate" title="Première étape d'un transfert vers un autre poste">Désactiver</button>
         <span id="lic-res" style="font-size:13px"></span>
       </div>
-      <p class="hint" style="margin:12px 0 0">La licence est liée à ce serveur. Pour la transférer : désactivez-la ici, puis activez-la sur le nouveau poste. Elle n'empêche pas le décompte ni l'arrêt.</p>
+      <p class="hint" style="margin:12px 0 0">Une licence par serveur : elle couvre tous les modules SmartGUARD de ce serveur et est exigée pour installer un module. Une fois installé, le module ne s'arrête jamais à cause de la licence. Pour changer de serveur : désactivez-la ici, puis activez-la sur le nouveau serveur.</p>
     </section>
     <section class="card" id="snippet-card">
       <h2>Intégration</h2>
@@ -321,7 +321,7 @@ button.danger{color:var(--crit)}
     }).catch(function(e){ msg(e.message, true); });
     loadLog(); loadLicense();
   }
-  var LIC = {none:['Non activée','off'], active:['Activée sur ce poste','ok'], other_machine:['Liée à un autre poste','critical'], error:['Erreur','critical']};
+  var LIC = {none:['Non activée','off'], active:['Activée sur ce serveur','ok'], other_machine:['Liée à un autre serveur','critical'], error:['Erreur','critical']};
   function paintLicense(l){
     var v = LIC[l.state] || LIC.error;
     $('lic-state').textContent = v[0]; $('lic-state').className = 'pill ' + v[1];
@@ -344,7 +344,7 @@ button.danger{color:var(--crit)}
     licAct({action:'activate', key:k}, 'Licence activée');
   });
   $('lic-deactivate').addEventListener('click', function(){
-    if (!confirm('Désactiver la licence sur ce poste ?\n(elle pourra ensuite être activée sur un autre poste)')) return;
+    if (!confirm('Désactiver la licence SmartGUARD de ce serveur ?\nElle couvre tous les modules du serveur : ils continuent de fonctionner, mais aucun nouveau module ne pourra être installé sans licence.\n(elle pourra ensuite être activée sur un autre serveur)')) return;
     licAct({action:'deactivate'}, 'Licence désactivée');
   });
   function loadLog(){ api('/api/log').then(function(l){ $('log').textContent = l.length ? l.join('\n') : '(vide)'; }).catch(function(){}); }
