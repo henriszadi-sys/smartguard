@@ -273,6 +273,7 @@ func (ss *setupServer) apiInfo(w http.ResponseWriter, r *http.Request) {
 		"dir_template": platform.DefaultInstallDir("{NOM}"),
 		"messages":     defaultMessages(),
 		"license":      licenseManager().Status(),
+		"system":       systemInfo(),
 	})
 }
 
@@ -298,7 +299,7 @@ func (ss *setupServer) apiExisting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := st.Config()
-	c.AdminPasswordHash = ""
+	c.AdminPasswordHash, c.ClientPasswordHash = "", ""
 	respondJSON(w, map[string]any{"install": in, "config": c})
 }
 
@@ -382,6 +383,44 @@ type installReq struct {
 // avant la licence obligatoire peut être mis à jour, la licence restant signalée
 // comme à activer.
 const RequireLicenseOnUpdate = false
+
+// systemCheck : contrôle du système minimal (remplaçable dans les tests).
+var systemCheck = platform.CheckSystem
+
+func systemInfo() map[string]any {
+	ok, label := systemCheck()
+	return map[string]any{"ok": ok, "label": label}
+}
+
+// MaxBackups : nombre de sauvegardes automatiques de la configuration conservées par module.
+const MaxBackups = 10
+
+// backupConfig copie la configuration d'un module existant dans son dossier
+// « sauvegardes » avant une mise à jour, et ne garde que les MaxBackups plus récentes.
+func backupConfig(cfgPath string, now time.Time) (string, error) {
+	b, err := os.ReadFile(cfgPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(filepath.Dir(cfgPath), "sauvegardes")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dir, "config-"+now.Format("20060102-150405")+".json")
+	if err := os.WriteFile(dst, b, 0600); err != nil {
+		return "", err
+	}
+	if old, _ := filepath.Glob(filepath.Join(dir, "config-*.json")); len(old) > MaxBackups {
+		sort.Strings(old) // horodatage dans le nom : ordre chronologique
+		for _, f := range old[:len(old)-MaxBackups] {
+			_ = os.Remove(f)
+		}
+	}
+	return dst, nil
+}
 
 // licenseManager : licence du serveur (remplaçable dans les tests).
 var licenseManager = func() *license.Manager { return license.NewManager("") }
@@ -512,6 +551,10 @@ func doInstall(q installReq) (map[string]any, error) {
 	if err := config.ValidateDeadline(first); err != nil {
 		return res, err
 	}
+	// Système minimal : Windows 10 / Windows Server 2016, ou Linux avec systemd.
+	if ok, label := systemCheck(); !ok {
+		return res, add("Système", errors.New(label), "")
+	}
 	// Licence SmartGUARD du serveur : contrôlée avant toute copie de fichier.
 	licDetail, licErr := checkLicense(licenseManager(), q.LicenseKey, existing)
 	if err := add("Licence SmartGUARD", licErr, licDetail); err != nil {
@@ -559,6 +602,17 @@ func doInstall(q installReq) (map[string]any, error) {
 	}
 	if renamed && !samePath(old.Exe, exeDst) {
 		_ = os.Remove(old.Exe)
+	}
+
+	// --- sauvegarde automatique avant la mise à jour d'un module existant
+	if existing {
+		if dst, err := backupConfig(cfgPath, time.Now()); err != nil {
+			if err := add("Sauvegarde de la configuration", err, ""); err != nil {
+				return res, err
+			}
+		} else if dst != "" {
+			_ = add("Sauvegarde de la configuration", nil, dst)
+		}
 	}
 
 	// --- configuration
